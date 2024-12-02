@@ -1,0 +1,26 @@
+/* styles.css */
+
+/* Reset default margins and paddings */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Ensure the body takes up the full viewport */
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #131313; /* Fallback background color */
+}
+
+/* Style the canvas to cover the entire viewport */
+#displayCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+
+}
