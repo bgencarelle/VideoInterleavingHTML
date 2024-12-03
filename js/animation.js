@@ -11,8 +11,57 @@ import {getRandomInt} from './utils.js';
 let mainFolders = [];
 let floatFolders = [];
 
-// Unified Buffer for Preloading Image Pairs
-let imageBuffer = [];
+// Implementing a Circular Buffer for Preloading Image Pairs
+class CircularBuffer {
+    constructor(size) {
+        this.size = size;
+        this.buffer = new Array(size);
+        this.head = 0;
+        this.tail = 0;
+        this.length = 0;
+    }
+
+    enqueue(item) {
+        if (this.length === this.size) {
+            console.warn('Buffer Overflow: Removing oldest item to enqueue new item.');
+            this.dequeue(); // Remove oldest item
+        }
+        this.buffer[this.tail] = item;
+        this.tail = (this.tail + 1) % this.size;
+        this.length++;
+    }
+
+    dequeue() {
+        if (this.length === 0) return null;
+        const item = this.buffer[this.head];
+        this.buffer[this.head] = undefined; // Help garbage collection
+        this.head = (this.head + 1) % this.size;
+        this.length--;
+        return item;
+    }
+
+    isEmpty() {
+        return this.length === 0;
+    }
+
+    isFull() {
+        return this.length === this.size;
+    }
+
+    sizeCurrent() {
+        return this.length;
+    }
+
+    clear() { // Added clear method
+        this.buffer = new Array(this.size);
+        this.head = 0;
+        this.tail = 0;
+        this.length = 0;
+        console.log('Buffer cleared.');
+    }
+}
+
+const imageBuffer = new CircularBuffer(BUFFER_SIZE);
 
 // Index Variables
 let overallIndex = 0; // Used for rendering
@@ -36,52 +85,60 @@ let fps = 0;
 let renderLoopStarted = false;
 let isPreloading = false; // Flag to prevent concurrent preloadImages calls
 
-// Flag to Lock the Buffer During Direction Switchover
-let bufferLocked = false;
+// Flag to Lock Folder Changes During Direction Reversal
+let foldersLocked = false;
 
-// Function to Lock the Buffer
-function lockBuffer() {
-    bufferLocked = true;
+// Function to Lock Folders
+function lockFolders() {
+    foldersLocked = true;
+    console.log('Folders locked.');
 }
 
-// Function to Unlock the Buffer
-function unlockBuffer() {
-    bufferLocked = false;
+// Function to Unlock Folders
+function unlockFolders() {
+    foldersLocked = false;
+    console.log('Folders unlocked.');
 }
 
 
 // Function to Update Folders Based on Rules
 function updateFolders(index) {
+    if (foldersLocked) return; // Prevent folder changes during lock
 
-    // Reset conditions
-    if ((index * renderDirection > 0 && index < rand_start) || (index * renderDirection > (10 * rand_start) && index < (12 * rand_start))) {
+    // Reset conditions based on direction
+    if ((renderDirection === 1 && index < rand_start) ||
+        (renderDirection === -1 && index > (10 * rand_start) && index < (12 * rand_start))) {
         float_folder = 0;
         main_folder = 0;
-        console.log(float_folder, main_folder);
+        console.log('Folders reset:', float_folder, main_folder);
     }
-        // Change float folder at intervals
-    if (index % (FPS * rand_mult) === 0) {
-            float_folder = getRandomInt(0, floatFolders.length - 1);
-            rand_mult = getRandomInt(1, 12); // Update random multiplier
-        //console.log('float folder_changed because ',float_folder, main_folder);
 
-        }
-        // Change main folder at different intervals
-    if (index % (2 * FPS * rand_mult) === 0) {
-            main_folder = getRandomInt(0, mainFolders.length - 1);
-        //console.log('main folder_changed because ',float_folder, main_folder);
-        }
+    // Change float folder at intervals
+    if (index % (FPS * rand_mult) === 0 && floatFolders.length > 1) {
+        float_folder = getRandomInt(0, floatFolders.length - 1);
+        rand_mult = getRandomInt(1, 12); // Update random multiplier
+        console.log('Float folder changed to:', float_folder);
+    }
+
+    // Change main folder at different intervals
+    if (index % (2 * FPS * rand_mult) === 0 && mainFolders.length > 1) {
+        main_folder = getRandomInt(0, mainFolders.length - 1);
+        console.log('Main folder changed to:', main_folder);
+    }
 }
 
 // Function to Preload Image Pairs into the Buffer
 async function preloadImages() {
-    if (isPreloading || bufferLocked) return; // Prevent multiple concurrent preloads or preloading during lock
+    if (isPreloading) return; // Prevent multiple concurrent preloads
     isPreloading = true;
     const maxIndex = getMaxIndex(); // Cache maxIndex to avoid recalculating in each loop
 
+    console.log(`Preloading images: preloadIndex=${preloadIndex}, preloadDirection=${preloadDirection}`);
+
     try {
-        while (imageBuffer.length < BUFFER_SIZE && !bufferLocked) {
+        while (!imageBuffer.isFull()) {
             const { fgPath, bgPath } = getImagePathsAtIndex(preloadIndex);
+            console.log(`Loading images at index ${preloadIndex}: FG=${fgPath}, BG=${bgPath}`);
 
             if (fgPath && bgPath) {
                 try {
@@ -89,7 +146,8 @@ async function preloadImages() {
                     const [fgImg, bgImg] = await Promise.all([loadImage(fgPath), loadImage(bgPath)]);
 
                     if (fgImg && bgImg) {
-                        imageBuffer.push({ fgImg, bgImg, index: preloadIndex });
+                        imageBuffer.enqueue({ fgImg, bgImg, index: preloadIndex });
+                        console.log(`Enqueued images at index ${preloadIndex}`);
                     } else {
                         console.warn(`Skipping preload for invalid images at index: ${preloadIndex}`);
                     }
@@ -103,15 +161,18 @@ async function preloadImages() {
             if (preloadIndex > maxIndex) {
                 preloadIndex = maxIndex;
                 preloadDirection = -1; // Reverse direction
+                console.log('Preload direction reversed to backward');
             } else if (preloadIndex < 0) {
                 preloadIndex = 0;
                 preloadDirection = 1; // Reverse direction
+                console.log('Preload direction reversed to forward');
             }
         }
     } catch (error) {
         console.error('Error during image preloading:', error);
     } finally {
         isPreloading = false;
+        console.log('Preloading completed.');
     }
 }
 
@@ -122,12 +183,12 @@ function getImagePathsAtIndex(index) {
 
     if (!fgFolder || !bgFolder) {
         // Folder not available
-        return {fgPath: '', bgPath: ''};
+        return { fgPath: '', bgPath: '' };
     }
 
     if (!fgFolder.image_list || !Array.isArray(fgFolder.image_list)) {
         // Invalid image_list
-        return {fgPath: '', bgPath: ''};
+        return { fgPath: '', bgPath: '' };
     }
 
     const fgImages = fgFolder.image_list;
@@ -148,7 +209,7 @@ function getImagePathsAtIndex(index) {
     const bgIndex = idx % bgImages.length;
     const fgPath = fgImages[fgIndex];
     const bgPath = bgImages[bgIndex];
-    return {fgPath, bgPath};
+    return { fgPath, bgPath };
 }
 
 // Function to Get Maximum Index Based on Current Folders
@@ -167,20 +228,24 @@ function renderLoop(timestamp) {
 
         const elapsed = timestamp - lastFrameTime;
 
-        if (elapsed > FRAME_DURATION/4) {
+        if (elapsed > FRAME_DURATION / 4) {
             // Update FPS Calculation
             frameTimes.push(elapsed);
             if (frameTimes.length > FPS) frameTimes.shift();
             const averageDeltaTime = frameTimes.reduce((sum, time) => sum + time, 0) / frameTimes.length;
             fps = Math.round(1000 / averageDeltaTime);
 
-            console.log(`Elapsed: ${elapsed.toFixed(2)} ms, Average Delta Time: ${averageDeltaTime.toFixed(2)} ms, FPS: ${fps}`);
+            // Throttle console logging to once per second
+            if (Math.floor(timestamp / 1000) !== Math.floor(lastFrameTime / 1000)) {
+                console.log(`Elapsed: ${elapsed.toFixed(2)} ms, Average Delta Time: ${averageDeltaTime.toFixed(2)} ms, FPS: ${fps}`);
+            }
 
             lastFrameTime = timestamp; // Reset the last frame time
 
             // Proceed only if the buffer has images ready
-            if (imageBuffer.length > 0) {
-                const { fgImg, bgImg, index } = imageBuffer.shift();
+            if (!imageBuffer.isEmpty()) {
+                const { fgImg, bgImg, index } = imageBuffer.dequeue();
+                console.log(`Rendering frame at index ${index}`);
 
                 // Update overallIndex based on the direction
                 overallIndex = index;
@@ -209,7 +274,7 @@ function renderLoop(timestamp) {
                 ctx.fillText(`Foreground: ${fgName}`, canvas.width - 10, canvas.height - 70);
                 ctx.fillText(`Floatground: ${bgName}`, canvas.width - 10, canvas.height - 50);
                 ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 30);
-                ctx.fillText(`Buffer Size: ${imageBuffer.length}`, canvas.width - 10, canvas.height - 10); // Display buffer size
+                ctx.fillText(`Buffer Size: ${imageBuffer.sizeCurrent()}`, canvas.width - 10, canvas.height - 10); // Display buffer size
 
                 // Update overallIndex for the next frame
                 overallIndex += renderDirection;
@@ -217,36 +282,45 @@ function renderLoop(timestamp) {
                 // Handle boundary conditions for rendering index
                 const maxIndex = getMaxIndex();
                 if (overallIndex >= maxIndex || overallIndex <= 0) {
-                    // Lock the buffer to prevent modifications during switchover
-                    lockBuffer();
+                    console.log(`Boundary reached at index ${overallIndex}. Reversing direction.`);
+                    // Lock folders to prevent changes during switchover
+                    lockFolders();
 
                     // Reverse directions
                     renderDirection *= -1;
                     preloadDirection = renderDirection;
 
-                    // Adjust preloadIndex based on the new direction
-                    preloadIndex = overallIndex + preloadDirection;
+                    // Clear the buffer to remove images from the previous direction
+                    imageBuffer.clear();
+                    console.log('Buffer cleared for direction reversal.');
 
-                    // Clamp preloadIndex to valid range
-                    preloadIndex = Math.max(0, Math.min(preloadIndex, maxIndex));
+                    // Adjust preloadIndex based on the new direction
+                    if (renderDirection === -1) {
+                        preloadIndex = maxIndex - 1;
+                    } else {
+                        preloadIndex = 0;
+                    }
 
                     // Preload images in the new direction
                     preloadImages().then(() => {
-                        // Unlock the buffer after preloading
-                        unlockBuffer();
+                        // Unlock folders after preloading
+                        console.log('Preloading completed after direction reversal.');
+                        unlockFolders();
                     }).catch(error => {
                         console.error('Preload Images Error during switchover:', error);
-                        unlockBuffer();
+                        unlockFolders();
                     });
                 }
 
-                // Preload more images if the buffer is running low and buffer is not locked
-                if (!bufferLocked && imageBuffer.length < BUFFER_SIZE / 2) {
+                // Preload more images if the buffer is running low and folders are not locked
+                if (!foldersLocked && imageBuffer.sizeCurrent() < BUFFER_SIZE / 2) {
+                    console.log('Buffer running low. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
                 }
             } else {
-                // Buffer empty: attempt to refill it if not locked
-                if (!bufferLocked) {
+                // Buffer empty: attempt to refill it if folders are not locked
+                if (!foldersLocked) {
+                    console.log('Buffer empty. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
                 }
             }
@@ -271,6 +345,9 @@ export async function startAnimation() {
     renderDirection = 1;
     preloadDirection = 1;
 
+    // Clear the buffer before starting
+    imageBuffer.clear();
+
     // Preload Initial Images
     await preloadImages();
 
@@ -293,20 +370,24 @@ export async function initializeAnimation(mainData, floatData) {
         console.error('The number of folders in main folders and float folders do not match.');
         return false;
     }
+
     // Verify that each folder has an image_list
-    mainFolders.forEach((folder, idx) => {
-        if (!folder.image_list || !Array.isArray(folder.image_list)) {
+    for (let idx = 0; idx < mainFolders.length; idx++) {
+        const folder = mainFolders[idx];
+        if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
             console.error(`Folder ${idx} in mainFolders is missing a valid 'image_list' array.`);
             return false;
         }
-    });
+    }
 
-    floatFolders.forEach((folder, idx) => {
-        if (!folder.image_list || !Array.isArray(folder.image_list)) {
+    for (let idx = 0; idx < floatFolders.length; idx++) {
+        const folder = floatFolders[idx];
+        if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
             console.error(`Folder ${idx} in floatFolders is missing a valid 'image_list' array.`);
             return false;
         }
-    });
+    }
 
+    console.log('Folders initialized successfully.');
     return true;
 }
