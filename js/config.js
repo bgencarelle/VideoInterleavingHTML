@@ -1,8 +1,8 @@
 // config.js
 
-export const FPS = 60;
+export const FPS = 144;
 export const FRAME_DURATION = 1000 / FPS;
-export const BUFFER_SIZE = 10
+export const BUFFER_SIZE = 60
 export const PINGPONG = true;
 export const CLOCK_MODE = 'FREE_CLOCK';
 
