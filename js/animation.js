@@ -3,73 +3,53 @@
 import {
     FPS, FRAME_DURATION, BUFFER_SIZE,
 } from './config.js';
-import {canvas, ctx, offscreenCanvas, offscreenCtx, drawImageWithAspect} from './canvas.js';
-import {loadImage} from './loader.js';
-import {getRandomInt} from './utils.js';
+import { canvas, ctx, offscreenCanvas, offscreenCtx, drawImageWithAspect } from './canvas.js';
+import { loadImage } from './loader.js';
+import { getRandomInt } from './utils.js';
+import { IndexController } from './indexController.js';
+
+let maxIndex = 0; // This will be set after initializing folders
+let indexController; // Will be initialized later
 
 // Loaded Folder Lists
 let mainFolders = [];
 let floatFolders = [];
 
-// Implementing a Circular Buffer for Preloading Image Pairs
-class CircularBuffer {
+// Implementing an Image Cache for Preloading Image Pairs
+class ImageCache {
     constructor(size) {
         this.size = size;
-        this.buffer = new Array(size);
-        this.head = 0;
-        this.tail = 0;
-        this.length = 0;
+        this.cache = new Map(); // Map of index to { fgImg, bgImg }
     }
 
-    enqueue(item) {
-        if (this.length === this.size) {
-            console.warn('Buffer Overflow: Removing oldest item to enqueue new item.');
-            this.dequeue(); // Remove oldest item
+    set(index, item) {
+        if (this.cache.size >= this.size) {
+            // Remove the oldest entry
+            const oldestKey = this.cache.keys().next().value;
+            this.cache.delete(oldestKey);
         }
-        this.buffer[this.tail] = item;
-        this.tail = (this.tail + 1) % this.size;
-        this.length++;
+        this.cache.set(index, item);
     }
 
-    dequeue() {
-        if (this.length === 0) return null;
-        const item = this.buffer[this.head];
-        this.buffer[this.head] = undefined; // Help garbage collection
-        this.head = (this.head + 1) % this.size;
-        this.length--;
-        return item;
+    get(index) {
+        return this.cache.get(index);
     }
 
-    isEmpty() {
-        return this.length === 0;
+    has(index) {
+        return this.cache.has(index);
     }
 
-    isFull() {
-        return this.length === this.size;
+    clear() {
+        this.cache.clear();
+        console.log('Cache cleared.');
     }
 
     sizeCurrent() {
-        return this.length;
-    }
-
-    clear() { // Added clear method
-        this.buffer = new Array(this.size);
-        this.head = 0;
-        this.tail = 0;
-        this.length = 0;
-        console.log('Buffer cleared.');
+        return this.cache.size;
     }
 }
 
-const imageBuffer = new CircularBuffer(BUFFER_SIZE);
-
-// Index Variables
-let overallIndex = 0; // Used for rendering
-let preloadIndex = 0; // Used for preloading
-
-// Direction Variables
-let renderDirection = 1; // 1 for forward, -1 for backward
-let preloadDirection = 1; // 1 for forward, -1 for backward
+const imageCache = new ImageCache(BUFFER_SIZE);
 
 // Additional Variables for Folder Changes
 let rand_mult = getRandomInt(1, 9);
@@ -96,23 +76,26 @@ function lockFolders() {
 
 // Function to Unlock Folders
 function unlockFolders() {
+    rand_start = Math.min(FPS + Math.max(2 * (rand_mult ** 2), FPS*2), 255);
     foldersLocked = false;
     console.log('Folders unlocked.');
 }
-
 
 // Function to Update Folders Based on Rules
 function updateFolders(index) {
     if (foldersLocked) return; // Prevent folder changes during lock
 
+    const direction = indexController.direction;
+
     // Reset conditions based on direction
-    if ((renderDirection === 1 && index < rand_start) ||
-        (renderDirection === -1 && index > (10 * rand_start) && index < (12 * rand_start))) {
+    if ((index < rand_start) ||
+        (direction === 1 && index > (10 * rand_start) && index < (12 * rand_start))) {
         float_folder = 0;
         main_folder = 0;
         console.log('Folders reset:', float_folder, main_folder);
-    }
 
+    }
+    else{
     // Change float folder at intervals
     if (index % (FPS * rand_mult) === 0 && floatFolders.length > 1) {
         float_folder = getRandomInt(0, floatFolders.length - 1);
@@ -124,48 +107,41 @@ function updateFolders(index) {
     if (index % (2 * FPS * rand_mult) === 0 && mainFolders.length > 1) {
         main_folder = getRandomInt(0, mainFolders.length - 1);
         console.log('Main folder changed to:', main_folder);
-    }
+    }}
 }
 
-// Function to Preload Image Pairs into the Buffer
+// Function to Preload Image Pairs into the Cache
 async function preloadImages() {
     if (isPreloading) return; // Prevent multiple concurrent preloads
     isPreloading = true;
-    const maxIndex = getMaxIndex(); // Cache maxIndex to avoid recalculating in each loop
 
-    console.log(`Preloading images: preloadIndex=${preloadIndex}, preloadDirection=${preloadDirection}`);
+    console.log(`Preloading images around index ${indexController.index}, direction=${indexController.direction}`);
 
     try {
-        while (!imageBuffer.isFull()) {
-            const { fgPath, bgPath } = getImagePathsAtIndex(preloadIndex);
-            console.log(`Loading images at index ${preloadIndex}: FG=${fgPath}, BG=${bgPath}`);
+        const preloadIndices = getPreloadIndices(); // Get indices to preload
+
+        for (let idx of preloadIndices) {
+            if (imageCache.has(idx)) {
+                console.log(`Skipping preload for index ${idx}: already in cache.`);
+                continue;
+            }
+
+            const { fgPath, bgPath } = getImagePathsAtIndex(idx);
+            console.log(`Loading images at index ${idx}: FG=${fgPath}, BG=${bgPath}`);
 
             if (fgPath && bgPath) {
                 try {
-                    // Load foreground and background images in parallel
                     const [fgImg, bgImg] = await Promise.all([loadImage(fgPath), loadImage(bgPath)]);
 
                     if (fgImg && bgImg) {
-                        imageBuffer.enqueue({ fgImg, bgImg, index: preloadIndex });
-                        console.log(`Enqueued images at index ${preloadIndex}`);
+                        imageCache.set(idx, { fgImg, bgImg });
+                        console.log(`Cached images at index ${idx}`);
                     } else {
-                        console.warn(`Skipping preload for invalid images at index: ${preloadIndex}`);
+                        console.warn(`Skipping preload for invalid images at index: ${idx}`);
                     }
                 } catch (imageError) {
-                    console.warn(`Error loading images at index ${preloadIndex}:`, imageError);
+                    console.warn(`Error loading images at index ${idx}:`, imageError);
                 }
-            }
-
-            // Update preloadIndex independently
-            preloadIndex += preloadDirection;
-            if (preloadIndex > maxIndex) {
-                preloadIndex = maxIndex;
-                preloadDirection = -1; // Reverse direction
-                console.log('Preload direction reversed to backward');
-            } else if (preloadIndex < 0) {
-                preloadIndex = 0;
-                preloadDirection = 1; // Reverse direction
-                console.log('Preload direction reversed to forward');
             }
         }
     } catch (error) {
@@ -174,6 +150,22 @@ async function preloadImages() {
         isPreloading = false;
         console.log('Preloading completed.');
     }
+}
+
+// Function to get indices to preload
+function getPreloadIndices() {
+    const indices = [];
+    const bufferRange = Math.floor(BUFFER_SIZE / 2); // Adjust as needed
+    const currentIndex = indexController.index;
+
+    // Preload indices ahead and behind the current index
+    for (let offset = -bufferRange; offset <= bufferRange; offset++) {
+        let idx = currentIndex + offset;
+        if (idx > maxIndex) idx = idx % (maxIndex + 1);
+        if (idx < 0) idx = (maxIndex + 1) + idx;
+        indices.push(idx);
+    }
+    return indices;
 }
 
 // Function to Get Image Paths at a Specific Index
@@ -195,14 +187,13 @@ function getImagePathsAtIndex(index) {
     const bgImages = bgFolder.image_list;
 
     const fgMaxIndex = fgImages.length - 1;
-    const maxIndex = fgMaxIndex;
 
     let idx = index;
 
     if (idx < 0) {
         idx = 0;
-    } else if (idx > maxIndex) {
-        idx = maxIndex;
+    } else if (idx > fgMaxIndex) {
+        idx = fgMaxIndex;
     }
 
     const fgIndex = idx % fgImages.length;
@@ -228,10 +219,10 @@ function renderLoop(timestamp) {
 
         const elapsed = timestamp - lastFrameTime;
 
-        if (elapsed > FRAME_DURATION / 4) {
+        if (elapsed > FRAME_DURATION) {
             // Update FPS Calculation
             frameTimes.push(elapsed);
-            if (frameTimes.length > FPS) frameTimes.shift();
+            if (frameTimes.length >= FPS) frameTimes.shift();
             const averageDeltaTime = frameTimes.reduce((sum, time) => sum + time, 0) / frameTimes.length;
             fps = Math.round(1000 / averageDeltaTime);
 
@@ -242,13 +233,11 @@ function renderLoop(timestamp) {
 
             lastFrameTime = timestamp; // Reset the last frame time
 
-            // Proceed only if the buffer has images ready
-            if (!imageBuffer.isEmpty()) {
-                const { fgImg, bgImg, index } = imageBuffer.dequeue();
-                console.log(`Rendering frame at index ${index}`);
+            const overallIndex = indexController.index; // Use index from the index controller
 
-                // Update overallIndex based on the direction
-                overallIndex = index;
+            if (imageCache.has(overallIndex)) {
+                const { fgImg, bgImg } = imageCache.get(overallIndex);
+                console.log(`Rendering frame at index ${overallIndex}`);
 
                 // Update folders based on the current index
                 updateFolders(overallIndex);
@@ -270,59 +259,23 @@ function renderLoop(timestamp) {
                 ctx.font = '16px Arial';
                 ctx.fillStyle = 'white';
                 ctx.textAlign = 'right';
-                ctx.fillText(`Index: ${overallIndex}, Direction: ${renderDirection === 1 ? 'Forward' : 'Backward'}`, canvas.width - 10, canvas.height - 90);
+                ctx.fillText(`Index: ${overallIndex}, Direction: ${indexController.direction === 1 ? 'Forward' : 'Backward'}`, canvas.width - 10, canvas.height - 90);
                 ctx.fillText(`Foreground: ${fgName}`, canvas.width - 10, canvas.height - 70);
                 ctx.fillText(`Floatground: ${bgName}`, canvas.width - 10, canvas.height - 50);
                 ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 30);
-                ctx.fillText(`Buffer Size: ${imageBuffer.sizeCurrent()}`, canvas.width - 10, canvas.height - 10); // Display buffer size
+                ctx.fillText(`Cache Size: ${imageCache.sizeCurrent()}`, canvas.width - 10, canvas.height - 10); // Display cache size
 
-                // Update overallIndex for the next frame
-                overallIndex += renderDirection;
+                // After rendering, increment the index
+                indexController.increment();
 
-                // Handle boundary conditions for rendering index
-                const maxIndex = getMaxIndex();
-                if (overallIndex >= maxIndex || overallIndex <= 0) {
-                    console.log(`Boundary reached at index ${overallIndex}. Reversing direction.`);
-                    // Lock folders to prevent changes during switchover
-                    lockFolders();
-
-                    // Reverse directions
-                    renderDirection *= -1;
-                    preloadDirection = renderDirection;
-
-                    // Clear the buffer to remove images from the previous direction
-                    imageBuffer.clear();
-                    console.log('Buffer cleared for direction reversal.');
-
-                    // Adjust preloadIndex based on the new direction
-                    if (renderDirection === -1) {
-                        preloadIndex = maxIndex - 1;
-                    } else {
-                        preloadIndex = 0;
-                    }
-
-                    // Preload images in the new direction
-                    preloadImages().then(() => {
-                        // Unlock folders after preloading
-                        console.log('Preloading completed after direction reversal.');
-                        unlockFolders();
-                    }).catch(error => {
-                        console.error('Preload Images Error during switchover:', error);
-                        unlockFolders();
-                    });
-                }
-
-                // Preload more images if the buffer is running low and folders are not locked
-                if (!foldersLocked && imageBuffer.sizeCurrent() < BUFFER_SIZE / 2) {
-                    console.log('Buffer running low. Initiating preloading.');
+                // Handle preloading based on cache size
+                if (!foldersLocked && imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
+                    console.log('Cache running low. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
                 }
             } else {
-                // Buffer empty: attempt to refill it if folders are not locked
-                if (!foldersLocked) {
-                    console.log('Buffer empty. Initiating preloading.');
-                    preloadImages().catch(error => console.error('Preload Images Error:', error));
-                }
+                console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
+                // Optionally, you can handle this case by showing a placeholder or skipping the frame
             }
         }
     } catch (error) {
@@ -333,20 +286,17 @@ function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
 }
 
-
 // Function to Start the Animation
 export async function startAnimation() {
     if (renderLoopStarted) return;
     renderLoopStarted = true;
 
-    // Reset indices and directions
-    overallIndex = 0;
-    preloadIndex = 0;
-    renderDirection = 1;
-    preloadDirection = 1;
+    // Initialize IndexController
+    indexController.setIndex(0);
+    indexController.setDirection(1);
 
-    // Clear the buffer before starting
-    imageBuffer.clear();
+    // Clear the cache before starting
+    imageCache.clear();
 
     // Preload Initial Images
     await preloadImages();
@@ -387,6 +337,23 @@ export async function initializeAnimation(mainData, floatData) {
             return false;
         }
     }
+
+    maxIndex = getMaxIndex(); // Now that folders are initialized
+    indexController = new IndexController(maxIndex);
+
+// Subscribe to index changes
+indexController.onIndexChange((newIndex, direction, event) => {
+    console.log(`Index changed to ${newIndex}, direction: ${direction}`);
+
+    if (event.directionChanged) {
+        // Direction changed, clear the cache
+        imageCache.clear();
+        console.log('Direction changed. Cache cleared.');
+    }
+
+    preloadImages().catch(error => console.error('Preload Images Error:', error));
+});
+
 
     console.log('Folders initialized successfully.');
     return true;
