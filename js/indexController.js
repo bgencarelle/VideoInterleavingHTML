@@ -53,4 +53,3 @@ export class IndexController {
         this.listeners.forEach(callback => callback(this.index, this.direction, event));
     }
 }
-1

@@ -269,12 +269,13 @@ function renderLoop(timestamp) {
                 indexController.increment();
 
                 // Handle preloading based on cache size
-                if (!foldersLocked && imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
+                if (imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
                     console.log('Cache running low. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
                 }
             } else {
                 console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
+                preloadImages().catch(error => console.error('Preload Images Error:', error))
                 // Optionally, you can handle this case by showing a placeholder or skipping the frame
             }
         }
