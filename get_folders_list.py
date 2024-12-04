@@ -1,58 +1,53 @@
 # get_folders_list.py
 # This script scans directories for PNG and WEBP files, organizes them, and generates JSON lists.
 
-import os
 import re
 import json
+from pathlib import Path
 from PIL import Image
 from collections import defaultdict
 
-def get_subdirectories(path):
+def get_subdirectories(path: Path):
     """Retrieve all subdirectories within a given path."""
-    return [os.path.join(root, d) for root, dirs, _ in os.walk(path) for d in dirs]
+    return [d for d in path.rglob('*') if d.is_dir()]
 
-def contains_image_files(path):
+def contains_image_files(path: Path):
     """Check if a directory contains any PNG or WEBP files."""
-    try:
-        return any(file.lower().endswith(('.png', '.webp')) for file in os.listdir(path))
-    except FileNotFoundError:
-        return False
+    return any(file.suffix.lower() in ['.png', '.webp'] for file in path.iterdir())
 
-def count_image_files(path):
+def count_image_files(path: Path):
     """Count the number of PNG and WEBP files in a directory."""
-    try:
-        return len([file for file in os.listdir(path) if file.lower().endswith(('.png', '.webp'))])
-    except FileNotFoundError:
-        return 0
+    return sum(1 for file in path.iterdir() if file.suffix.lower() in ['.png', '.webp'])
 
-def parse_line(line):
+def parse_line(line: str):
     """Parse a line from folder_locations.txt."""
-    match = re.match(r'(\d+)[.,] (.+)', line)
+    match = re.match(r'(\d+)[.,]\s*(.+)', line)
     return (int(match.group(1)), match.group(2)) if match else (None, None)
 
-def has_alpha_channel(image):
+def has_alpha_channel(image: Image.Image):
     """Determine if an image has an alpha channel."""
     return image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info)
 
-def create_folder_json_files(folder_counts, processed_dir, script_dir):
+def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Path):
     """Create JSON files categorizing folders into main and float groups."""
     groups = defaultdict(list)
     float_group = defaultdict(list)
 
     for folder_info in folder_counts:
         folder, first_png, width, height, has_alpha, file_count = folder_info
-        folder_relative = os.path.relpath(folder, script_dir)
+        folder_relative = folder.relative_to(script_dir)
         folder_data = {
             "index": None,  # To be filled later
-            "folder_rel": folder_relative,
-            "first_png": first_png if first_png else "NoImage",
-            "dimensions": f"{width}x{height}",
-            "file_count": file_count,
-            "has_alpha": has_alpha,
-            "alpha_match": "Match" if has_alpha else "NoAlpha",
-            "file_extension": os.path.splitext(first_png)[1] if first_png else "N/A"
+            "folder_rel": folder_relative.as_posix(),
+            "image_list": [
+                (folder_relative / img.name).as_posix()
+                for img in sorted(
+                    folder.iterdir(),
+                    key=lambda x: natural_sort_key(x.name)
+                ) if img.suffix.lower() in ['.png', '.webp']
+            ]
         }
-        if os.path.basename(folder).startswith('255_'):
+        if folder.name.startswith('255_'):
             float_group[file_count].append(folder_data)
         else:
             groups[file_count].append(folder_data)
@@ -61,16 +56,16 @@ def create_folder_json_files(folder_counts, processed_dir, script_dir):
         for file_count, sub_group in group.items():
             # Sort the group based on numeric prefix or folder name
             sub_group_sorted = sorted(sub_group, key=lambda x: (
-                int(os.path.basename(x["folder_rel"]).partition('_')[0]) if os.path.basename(x["folder_rel"]).partition('_')[0].isdigit() else float('inf'),
-                os.path.basename(x["folder_rel"])
+                int(x["folder_rel"].split('_')[0]) if x["folder_rel"].split('_')[0].isdigit() else float('inf'),
+                x["folder_rel"]
             ))
             # Assign indices
             for idx, folder_data in enumerate(sub_group_sorted, 1):
                 folder_data["index"] = idx
             json_filename = file_name_format.format(file_count)
-            json_path = os.path.join(processed_dir, json_filename)
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(sub_group_sorted, f, indent=4)
+            json_path = processed_dir / json_filename
+            with json_path.open('w', encoding='utf-8') as f:
+                json.dump({"folders": sub_group_sorted}, f, indent=4)  # Wrap list in "folders" key
             print(f"JSON file created: {json_path}")
 
     write_json(groups, 'main_folders_{}.json')
@@ -79,30 +74,26 @@ def create_folder_json_files(folder_counts, processed_dir, script_dir):
 def write_folder_list():
     """Main function to create folder lists and JSON files."""
     # Determine the script's directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    processed_dir = os.path.join(script_dir, "folders_processed")
+    script_dir = Path(__file__).parent.resolve()
+    processed_dir = script_dir / "folders_processed"
 
     # Ensure the processed directory exists
-    if not os.path.exists(processed_dir):
-        try:
-            os.makedirs(processed_dir)
-            print(f"Created directory: {processed_dir}")
-        except Exception as e:
-            print(f"Failed to create 'folders_processed' directory at {processed_dir}: {e}")
-            raise
+    processed_dir.mkdir(exist_ok=True)
+    print(f"Processed directory: {processed_dir}")
 
     # Path to 'images' directory
-    images_path = os.path.join(script_dir, "images")
+    images_path = script_dir / "images"
 
     folder_dict = {}
 
-    if os.path.exists(images_path) and os.path.isdir(images_path):
+    if images_path.exists() and images_path.is_dir():
         # Add 'images' to folder_dict only if it contains image files
         if contains_image_files(images_path):
             folder_dict[1] = images_path
 
         # Add subdirectories that contain image files
-        for subdirectory in get_subdirectories(images_path):
+        subdirectories = get_subdirectories(images_path)
+        for subdirectory in subdirectories:
             if contains_image_files(subdirectory) and subdirectory not in folder_dict.values():
                 folder_dict[len(folder_dict) + 1] = subdirectory
 
@@ -112,27 +103,26 @@ def write_folder_list():
         print("Please enter directories manually.")
 
         # Load existing folder locations if available
-        folder_locations_path = os.path.join(script_dir, 'folder_locations.txt')
-        if os.path.exists(folder_locations_path):
-            with open(folder_locations_path, 'r', encoding='utf-8') as f:
+        folder_locations_path = script_dir / 'folder_locations.txt'
+        if folder_locations_path.exists():
+            with folder_locations_path.open('r', encoding='utf-8') as f:
                 for line in f:
                     number, folder = parse_line(line.strip())
                     if folder:
-                        # Convert relative path to absolute path
-                        folder_abs = os.path.join(script_dir, folder)
-                        if os.path.exists(folder_abs) and os.path.isdir(folder_abs):
+                        folder_abs = (script_dir / folder).resolve()
+                        if folder_abs.exists() and folder_abs.is_dir():
                             folder_dict[number] = folder_abs
                         else:
                             print(f"Warning: Folder '{folder}' does not exist and will be skipped.")
 
         # Interactive prompt loop
         while True:
-            folder_path = input("Enter individual paths, parent directories or type quit to stop: ").strip()
-            if folder_path.lower() == 'quit':
+            folder_input = input("Enter individual paths, parent directories or type 'quit' to stop: ").strip()
+            if folder_input.lower() == 'quit':
                 break
 
-            folder_abs = os.path.abspath(folder_path)
-            if not os.path.exists(folder_abs) or not os.path.isdir(folder_abs):
+            folder_abs = Path(folder_input).expanduser().resolve()
+            if not folder_abs.exists() or not folder_abs.is_dir():
                 print("Invalid directory. Please try again.")
                 continue
 
@@ -142,7 +132,8 @@ def write_folder_list():
                 print(f"Added folder: {folder_abs}")
 
             # Add subdirectories that contain image files
-            for subdirectory in get_subdirectories(folder_abs):
+            subdirectories = get_subdirectories(folder_abs)
+            for subdirectory in subdirectories:
                 if contains_image_files(subdirectory) and subdirectory not in folder_dict.values():
                     new_key = max(folder_dict.keys(), default=0) + 1
                     folder_dict[new_key] = subdirectory
@@ -154,15 +145,16 @@ def write_folder_list():
 
     # Calculate the total number of PNGs and WEBPs
     total_pngs = sum(count_image_files(folder) for folder in folder_dict.values())
+    print(f"Total PNG and WEBP files found: {total_pngs}")
 
     # Gather folder counts and image details
     folder_counts = []
     for folder in folder_dict.values():
-        image_files = [f for f in os.listdir(folder) if f.lower().endswith(('.png', '.webp'))]
+        image_files = [f for f in folder.iterdir() if f.suffix.lower() in ['.png', '.webp']]
         if image_files:
             first_img = image_files[0]
             try:
-                with Image.open(os.path.join(folder, first_img)) as img:
+                with Image.open(first_img) as img:
                     width, height = img.size
                     has_alpha = has_alpha_channel(img)
             except Exception as e:
@@ -174,12 +166,12 @@ def write_folder_list():
 
     # Save folder_count_XXXX.txt with relative paths (optional)
     folder_count_filename = f'folder_count_{total_pngs}.txt'
-    folder_count_path = os.path.join(processed_dir, folder_count_filename)
+    folder_count_path = processed_dir / folder_count_filename
     try:
-        with open(folder_count_path, 'w', encoding='utf-8') as f:
+        with folder_count_path.open('w', encoding='utf-8') as f:
             for index, (folder, first_img, width, height, has_alpha, count) in enumerate(folder_counts, 1):
-                folder_rel = os.path.relpath(folder, script_dir)
-                first_png_stripped = os.path.splitext(os.path.basename(first_img))[0] if first_img else "NoImage"
+                folder_rel = folder.relative_to(script_dir).as_posix()
+                first_png_stripped = first_img.stem if first_img else "NoImage"
                 f.write(f"{index}, {folder_rel}, {first_png_stripped}, {width}x{height}, {count}, {has_alpha}\n")
         print(f"Folder count file created: {folder_count_path}")
     except Exception as e:
@@ -193,19 +185,7 @@ def write_folder_list():
         print(f"Failed to create folder JSON files: {e}")
         raise
 
-def sort_image_files(folder_dict, script_dir):
-    """Sort image files in each folder using natural sort."""
-    sorted_image_files = []
-    for number in sorted(folder_dict.keys()):
-        folder = folder_dict[number]
-        image_files = [f for f in os.listdir(folder) if f.lower().endswith(('.png', '.webp'))]
-        image_files_sorted = sorted(image_files, key=lambda x: natural_sort_key(x))
-        # Convert to relative paths
-        image_files_rel = [os.path.join(os.path.relpath(folder, script_dir), f) for f in image_files_sorted]
-        sorted_image_files.append(image_files_rel)
-    return sorted_image_files
-
-def natural_sort_key(s):
+def natural_sort_key(s: str):
     """Generate a key for natural sorting."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
