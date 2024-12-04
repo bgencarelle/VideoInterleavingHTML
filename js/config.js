@@ -2,7 +2,7 @@
 
 export const FPS = 37;
 export const FRAME_DURATION = 1000 / FPS;
-export const BUFFER_SIZE = FPS *2
+export const BUFFER_SIZE = FPS
 export const PINGPONG = true;
 export const CLOCK_MODE = 'FREE_CLOCK';
 

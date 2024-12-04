@@ -41,7 +41,7 @@ class ImageCache {
 
     clear() {
         this.cache.clear();
-        console.log('Cache cleared.');
+        //console.log('Cache cleared.');
     }
 
     sizeCurrent() {
@@ -53,7 +53,7 @@ const imageCache = new ImageCache(BUFFER_SIZE);
 
 // Additional Variables for Folder Changes
 let rand_mult = getRandomInt(1, 9);
-let rand_start = Math.min(FPS + Math.max(2 * (rand_mult ** 2), 0), 255);
+let rand_start = getRandomInt(FPS, 5*FPS);
 let float_folder = 0;
 let main_folder = 0;
 
@@ -68,17 +68,47 @@ let isPreloading = false; // Flag to prevent concurrent preloadImages calls
 // Flag to Lock Folder Changes During Direction Reversal
 let foldersLocked = false;
 
+// Function to draw overlay text on the canvas
+function drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache) {
+    const fgName = fgImg.src.split('/').pop();
+    const bgName = bgImg.src.split('/').pop();
+
+    ctx.font = '16px Arial';
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'right';
+
+    // Basic overlay information
+    ctx.fillText(`Index: ${overallIndex}, Direction: ${indexController.direction === 1 ? 'Forward' : 'Backward'}`, canvas.width - 10, canvas.height - 130);
+    ctx.fillText(`Foreground: ${fgName}`, canvas.width - 10, canvas.height - 110);
+    ctx.fillText(`Floatground: ${bgName}`, canvas.width - 10, canvas.height - 90);
+    ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 70);
+    ctx.fillText(`Cache Size: ${imageCache.sizeCurrent()}`, canvas.width - 10, canvas.height - 50);
+
+    // Current buffer range
+    const cachedIndices = Array.from(imageCache.cache.keys());
+    if (cachedIndices.length > 0) {
+        const minIndex = Math.min(...cachedIndices);
+        const maxIndex = Math.max(...cachedIndices);
+        ctx.fillText(`Buffer Range (Actual): [${minIndex} to ${maxIndex}]`, canvas.width - 10, canvas.height - 30);
+    } else {
+        ctx.fillText(`Buffer Range (Actual): [empty]`, canvas.width - 10, canvas.height - 30);
+    }
+
+    // Expected buffer range
+    const bufferRange = Math.floor(BUFFER_SIZE / 2);
+    ctx.fillText(`Buffer Range (Expected): ±${bufferRange}`, canvas.width - 10, canvas.height - 10);
+}
 // Function to Lock Folders
 function lockFolders() {
     foldersLocked = true;
-    console.log('Folders locked.');
+    //console.log('Folders locked.');
 }
 
 // Function to Unlock Folders
 function unlockFolders() {
-    rand_start = Math.min(FPS + Math.max(2 * (rand_mult ** 2), FPS*2), 255);
+let rand_start = getRandomInt(2*FPS, 4*FPS);
     foldersLocked = false;
-    console.log('Folders unlocked.');
+   // console.log('Folders unlocked.');
 }
 
 // Function to Update Folders Based on Rules
@@ -92,7 +122,7 @@ function updateFolders(index) {
         (direction === 1 && index > (10 * rand_start) && index < (12 * rand_start))) {
         float_folder = 0;
         main_folder = 0;
-        console.log('Folders reset:', float_folder, main_folder);
+        //console.log('Folders reset:', float_folder, main_folder);
 
     }
     else{
@@ -100,13 +130,13 @@ function updateFolders(index) {
     if (index % (FPS * rand_mult) === 0 && floatFolders.length > 1) {
         float_folder = getRandomInt(0, floatFolders.length - 1);
         rand_mult = getRandomInt(1, 12); // Update random multiplier
-        console.log('Float folder changed to:', float_folder);
+        //console.log('Float folder changed to:', float_folder);
     }
 
     // Change main folder at different intervals
     if (index % (2 * FPS * rand_mult) === 0 && mainFolders.length > 1) {
         main_folder = getRandomInt(0, mainFolders.length - 1);
-        console.log('Main folder changed to:', main_folder);
+        //console.log('Main folder changed to:', main_folder);
     }}
 }
 
@@ -115,19 +145,19 @@ async function preloadImages() {
     if (isPreloading) return; // Prevent multiple concurrent preloads
     isPreloading = true;
 
-    console.log(`Preloading images around index ${indexController.index}, direction=${indexController.direction}`);
+    //console.log(`Preloading images around index ${indexController.index}, direction=${indexController.direction}`);
 
     try {
         const preloadIndices = getPreloadIndices(); // Get indices to preload
 
         for (let idx of preloadIndices) {
             if (imageCache.has(idx)) {
-                console.log(`Skipping preload for index ${idx}: already in cache.`);
+                //console.log(`Skipping preload for index ${idx}: already in cache.`);
                 continue;
             }
 
             const { fgPath, bgPath } = getImagePathsAtIndex(idx);
-            console.log(`Loading images at index ${idx}: FG=${fgPath}, BG=${bgPath}`);
+            //console.log(`Loading images at index ${idx}: FG=${fgPath}, BG=${bgPath}`);
 
             if (fgPath && bgPath) {
                 try {
@@ -135,7 +165,7 @@ async function preloadImages() {
 
                     if (fgImg && bgImg) {
                         imageCache.set(idx, { fgImg, bgImg });
-                        console.log(`Cached images at index ${idx}`);
+                       // console.log(`Cached images at index ${idx}`);
                     } else {
                         console.warn(`Skipping preload for invalid images at index: ${idx}`);
                     }
@@ -148,7 +178,7 @@ async function preloadImages() {
         console.error('Error during image preloading:', error);
     } finally {
         isPreloading = false;
-        console.log('Preloading completed.');
+        //console.log('Preloading completed.');
     }
 }
 
@@ -237,14 +267,10 @@ function renderLoop(timestamp) {
 
             if (imageCache.has(overallIndex)) {
                 const { fgImg, bgImg } = imageCache.get(overallIndex);
-                console.log(`Rendering frame at index ${overallIndex}`);
+                //console.log(`Rendering frame at index ${overallIndex}`);
 
                 // Update folders based on the current index
                 updateFolders(overallIndex);
-
-                // Extract file names from paths for debugging/display (optional)
-                const fgName = fgImg.src.split('/').pop();
-                const bgName = bgImg.src.split('/').pop();
 
                 // Clear and prepare the offscreen canvas
                 offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
@@ -255,26 +281,19 @@ function renderLoop(timestamp) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 
-                // Draw overlay text (optional)
-                ctx.font = '16px Arial';
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'right';
-                ctx.fillText(`Index: ${overallIndex}, Direction: ${indexController.direction === 1 ? 'Forward' : 'Backward'}`, canvas.width - 10, canvas.height - 90);
-                ctx.fillText(`Foreground: ${fgName}`, canvas.width - 10, canvas.height - 70);
-                ctx.fillText(`Floatground: ${bgName}`, canvas.width - 10, canvas.height - 50);
-                ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 30);
-                ctx.fillText(`Cache Size: ${imageCache.sizeCurrent()}`, canvas.width - 10, canvas.height - 10); // Display cache size
+                // debugging/display (optional)
 
+                drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache);
                 // After rendering, increment the index
                 indexController.increment();
 
                 // Handle preloading based on cache size
                 if (imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
-                    console.log('Cache running low. Initiating preloading.');
+                    //console.log('Cache running low. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
                 }
             } else {
-                console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
+                //console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
                 preloadImages().catch(error => console.error('Preload Images Error:', error))
                 // Optionally, you can handle this case by showing a placeholder or skipping the frame
             }
