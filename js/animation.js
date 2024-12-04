@@ -84,16 +84,6 @@ function drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgIm
     ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 70);
     ctx.fillText(`Cache Size: ${imageCache.sizeCurrent()}`, canvas.width - 10, canvas.height - 50);
 
-    // Current buffer range
-    const cachedIndices = Array.from(imageCache.cache.keys());
-    if (cachedIndices.length > 0) {
-        const minIndex = Math.min(...cachedIndices);
-        const maxIndex = Math.max(...cachedIndices);
-        ctx.fillText(`Buffer Range (Actual): [${minIndex} to ${maxIndex}]`, canvas.width - 10, canvas.height - 30);
-    } else {
-        ctx.fillText(`Buffer Range (Actual): [empty]`, canvas.width - 10, canvas.height - 30);
-    }
-
     // Expected buffer range
     const bufferRange = Math.floor(BUFFER_SIZE / 2);
     ctx.fillText(`Buffer Range (Expected): ±${bufferRange}`, canvas.width - 10, canvas.height - 10);
@@ -106,38 +96,38 @@ function lockFolders() {
 
 // Function to Unlock Folders
 function unlockFolders() {
-let rand_start = getRandomInt(2*FPS, 4*FPS);
     foldersLocked = false;
    // console.log('Folders unlocked.');
 }
 
 // Function to Update Folders Based on Rules
 function updateFolders(index) {
-    if (foldersLocked) return; // Prevent folder changes during lock
 
     const direction = indexController.direction;
 
     // Reset conditions based on direction
     if ((index < rand_start) ||
-        (direction === 1 && index > (10 * rand_start) && index < (12 * rand_start))) {
+        (direction === 1 && index > (10 * rand_mult) && index < (12 * rand_mult))) {
         float_folder = 0;
         main_folder = 0;
-        //console.log('Folders reset:', float_folder, main_folder);
-
+        rand_start = getRandomInt(FPS, 5*FPS);
+        console.log('Folders reset:', float_folder, main_folder);
+        return;
     }
-    else{
+        rand_start = getRandomInt(FPS, 5*FPS);
     // Change float folder at intervals
-    if (index % (FPS * rand_mult) === 0 && floatFolders.length > 1) {
+    if (index % ((FPS + 1) * rand_mult) === 0) {
         float_folder = getRandomInt(0, floatFolders.length - 1);
         rand_mult = getRandomInt(1, 12); // Update random multiplier
-        //console.log('Float folder changed to:', float_folder);
+        console.log('Float folder changed to:', float_folder);
     }
 
     // Change main folder at different intervals
-    if (index % (2 * FPS * rand_mult) === 0 && mainFolders.length > 1) {
+    if (index % (2 + FPS * rand_mult) === 0) {
         main_folder = getRandomInt(0, mainFolders.length - 1);
-        //console.log('Main folder changed to:', main_folder);
-    }}
+        rand_mult = getRandomInt(1, 9); // Update random multiplier
+        console.log('Main folder changed to:', main_folder);
+    }
 }
 
 // Function to Preload Image Pairs into the Cache
@@ -258,7 +248,7 @@ function renderLoop(timestamp) {
 
             // Throttle console logging to once per second
             if (Math.floor(timestamp / 1000) !== Math.floor(lastFrameTime / 1000)) {
-                console.log(`Elapsed: ${elapsed.toFixed(2)} ms, Average Delta Time: ${averageDeltaTime.toFixed(2)} ms, FPS: ${fps}`);
+                //console.log(`Elapsed: ${elapsed.toFixed(2)} ms, Average Delta Time: ${averageDeltaTime.toFixed(2)} ms, FPS: ${fps}`);
             }
 
             lastFrameTime = timestamp; // Reset the last frame time
@@ -283,7 +273,7 @@ function renderLoop(timestamp) {
 
                 // debugging/display (optional)
 
-                drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache);
+                //drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache);
                 // After rendering, increment the index
                 indexController.increment();
 
@@ -291,6 +281,7 @@ function renderLoop(timestamp) {
                 if (imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
                     //console.log('Cache running low. Initiating preloading.');
                     preloadImages().catch(error => console.error('Preload Images Error:', error));
+
                 }
             } else {
                 //console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
@@ -363,12 +354,12 @@ export async function initializeAnimation(mainData, floatData) {
 
 // Subscribe to index changes
 indexController.onIndexChange((newIndex, direction, event) => {
-    console.log(`Index changed to ${newIndex}, direction: ${direction}`);
+   // console.log(`Index changed to ${newIndex}, direction: ${direction}`);
 
     if (event.directionChanged) {
         // Direction changed, clear the cache
         imageCache.clear();
-        console.log('Direction changed. Cache cleared.');
+       // console.log('Direction changed. Cache cleared.');
     }
 
     preloadImages().catch(error => console.error('Preload Images Error:', error));

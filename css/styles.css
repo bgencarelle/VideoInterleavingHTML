@@ -1,5 +1,3 @@
-/* styles.css */
-
 /* Reset default margins and paddings */
 * {
     margin: 0;
@@ -24,4 +22,7 @@ body, html {
     height: 100%;
     cursor: none;
 
+    /* GPU acceleration hints */
+    will-change: transform;
+    transform: translateZ(0);
 }
