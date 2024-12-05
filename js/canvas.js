@@ -61,5 +61,5 @@ initializeCanvas();
 let resizeTimeout;
 window.addEventListener('resize', () => {
     clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(initializeCanvas, 10);
+    resizeTimeout = setTimeout(initializeCanvas, 100);
 });

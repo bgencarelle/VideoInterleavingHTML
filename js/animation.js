@@ -7,14 +7,8 @@ import { canvas, ctx, offscreenCanvas, offscreenCtx, drawImageWithAspect } from 
 import { loadImage } from './loader.js';
 import { getRandomInt } from './utils.js';
 import { IndexController } from './indexController.js';
-
-let maxIndex = 0; // This will be set after initializing folders
-let indexController; // Will be initialized later
-
-// Loaded Folder Lists
-let mainFolders = [];
-let floatFolders = [];
-
+import { drawOverlayText } from './utils.js';
+import { calculateFPS } from './utils.js';
 // Implementing an Image Cache for Preloading Image Pairs
 class ImageCache {
     constructor(size) {
@@ -49,322 +43,357 @@ class ImageCache {
     }
 }
 
-const imageCache = new ImageCache(BUFFER_SIZE);
-
-// Additional Variables for Folder Changes
-let rand_mult = getRandomInt(1, 9);
-let rand_start = getRandomInt(FPS, 5*FPS);
-let float_folder = 0;
-let main_folder = 0;
-
-// Variables to Track FPS
-let frameTimes = [];
-let fps = 0;
-
-// Flags
-let renderLoopStarted = false;
-let isPreloading = false; // Flag to prevent concurrent preloadImages calls
-
-// Flag to Lock Folder Changes During Direction Reversal
-let foldersLocked = false;
-
 // Function to draw overlay text on the canvas
-function drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache) {
-    const fgName = fgImg.src.split('/').pop();
-    const bgName = bgImg.src.split('/').pop();
 
-    ctx.font = '16px Arial';
-    ctx.fillStyle = 'white';
-    ctx.textAlign = 'right';
+// Function to Change File Source Folders Based on Rules
+function changeFileSourceFolder(index, state) {
+    const direction = state.indexController.direction;
 
-    // Basic overlay information
-    ctx.fillText(`Index: ${overallIndex}, Direction: ${indexController.direction === 1 ? 'Forward' : 'Backward'}`, canvas.width - 10, canvas.height - 130);
-    ctx.fillText(`Foreground: ${fgName}`, canvas.width - 10, canvas.height - 110);
-    ctx.fillText(`Floatground: ${bgName}`, canvas.width - 10, canvas.height - 90);
-    ctx.fillText(`FPS: ${fps}`, canvas.width - 10, canvas.height - 70);
-    ctx.fillText(`Cache Size: ${imageCache.sizeCurrent()}`, canvas.width - 10, canvas.height - 50);
-
-    // Expected buffer range
-    const bufferRange = Math.floor(BUFFER_SIZE / 2);
-    ctx.fillText(`Buffer Range (Expected): ±${bufferRange}`, canvas.width - 10, canvas.height - 10);
-}
-// Function to Lock Folders
-function lockFolders() {
-    foldersLocked = true;
-    //console.log('Folders locked.');
-}
-
-// Function to Unlock Folders
-function unlockFolders() {
-    foldersLocked = false;
-   // console.log('Folders unlocked.');
-}
-
-// Function to Update Folders Based on Rules
-function updateFolders(index) {
-
-    const direction = indexController.direction;
+    let folderChanged = false;
 
     // Reset conditions based on direction
-    if ((index < rand_start) ||
-        (direction === 1 && index > (10 * rand_mult) && index < (12 * rand_mult))) {
-        float_folder = 0;
-        main_folder = 0;
-        rand_start = getRandomInt(FPS, 5*FPS);
-        console.log('Folders reset:', float_folder, main_folder);
-        return;
-    }
-        rand_start = getRandomInt(FPS, 5*FPS);
-    // Change float folder at intervals
-    if (index % ((FPS + 1) * rand_mult) === 0) {
-        float_folder = getRandomInt(0, floatFolders.length - 1);
-        rand_mult = getRandomInt(1, 12); // Update random multiplier
-        console.log('Float folder changed to:', float_folder);
+    if (
+        (index < state.rand_start) ||
+        (direction === 1 && index > (10 * state.rand_mult) && index < (12 * state.rand_mult))
+    ) {
+        state.float_folder = 0;
+        state.main_folder = 0;
+        state.rand_start = getRandomInt(FPS, 5 * FPS);
+        console.log('Folders reset:', state.float_folder, state.main_folder);
+        folderChanged = true;
+
+        // Schedule the next reset
+        state.nextResetIndex = index + state.rand_start;
+    } else {
+        state.rand_start = getRandomInt(FPS, 5 * FPS);
+
+        // Change float folder at intervals
+        if (index % ((FPS + 1) * state.rand_mult) === 0) {
+            state.float_folder = getRandomInt(0, state.floatFolders.length - 1);
+            state.rand_mult = getRandomInt(1, 12); // Update random multiplier
+            console.log('Float folder changed to:', state.float_folder);
+            folderChanged = true;
+
+            // Schedule the next float_folder change
+            state.nextFloatFolderChangeIndex = index + ((FPS + 1) * state.rand_mult);
+        }
+
+        // Change main folder at different intervals
+        if (index % (2 + FPS * state.rand_mult) === 0) {
+            state.main_folder = getRandomInt(0, state.mainFolders.length - 1);
+            state.rand_mult = getRandomInt(1, 9); // Update random multiplier
+            console.log('Main folder changed to:', state.main_folder);
+            folderChanged = true;
+
+            // Schedule the next main_folder change
+            state.nextMainFolderChangeIndex = index + (2 + FPS * state.rand_mult);
+        }
     }
 
-    // Change main folder at different intervals
-    if (index % (2 + FPS * rand_mult) === 0) {
-        main_folder = getRandomInt(0, mainFolders.length - 1);
-        rand_mult = getRandomInt(1, 9); // Update random multiplier
-        console.log('Main folder changed to:', main_folder);
+    // If folders changed, record the change in the scheduler
+    if (folderChanged) {
+        state.folderChangeSchedule.push({
+            index: index, // The index at which the change occurred
+            main_folder: state.main_folder,
+            float_folder: state.float_folder,
+        });
+
+        // Set flag to indicate preloading is needed
+        state.needsPreloading = true;
     }
 }
 
 // Function to Preload Image Pairs into the Cache
-async function preloadImages() {
-    if (isPreloading) return; // Prevent multiple concurrent preloads
-    isPreloading = true;
-
-    //console.log(`Preloading images around index ${indexController.index}, direction=${indexController.direction}`);
+async function preloadImages(state) {
+    if (state.isPreloading) return; // Prevent multiple concurrent preloads
+    state.isPreloading = true;
 
     try {
-        const preloadIndices = getPreloadIndices(); // Get indices to preload
+        const preloadInfos = getPreloadIndices(state); // Get indices and their folder selections
 
-        for (let idx of preloadIndices) {
-            if (imageCache.has(idx)) {
-                //console.log(`Skipping preload for index ${idx}: already in cache.`);
+        for (let preloadInfo of preloadInfos) {
+            const { index, main_folder, float_folder } = preloadInfo;
+
+            if (state.imageCache.has(index)) {
+                // Skip if already cached
                 continue;
             }
 
-            const { fgPath, bgPath } = getImagePathsAtIndex(idx);
-            //console.log(`Loading images at index ${idx}: FG=${fgPath}, BG=${bgPath}`);
+            // Determine image paths based on folder selections
+            const fgFolder = state.mainFolders[main_folder];
+            const bgFolder = state.floatFolders[float_folder];
+
+            if (!fgFolder || !bgFolder) {
+                // Folder not available
+                continue;
+            }
+
+            if (!fgFolder.image_list || !Array.isArray(fgFolder.image_list)) {
+                // Invalid image_list
+                continue;
+            }
+
+            const fgImages = fgFolder.image_list;
+            const bgImages = bgFolder.image_list;
+
+            const fgMaxIndex = fgImages.length - 1;
+
+            let adjustedIndex = index;
+
+            if (adjustedIndex < 0) {
+                adjustedIndex = 0;
+            } else if (adjustedIndex > fgMaxIndex) {
+                adjustedIndex = fgMaxIndex;
+            }
+
+            const fgIndex = adjustedIndex % fgImages.length;
+            const bgIndex = adjustedIndex % bgImages.length;
+            const fgPath = fgImages[fgIndex];
+            const bgPath = bgImages[bgIndex];
 
             if (fgPath && bgPath) {
                 try {
                     const [fgImg, bgImg] = await Promise.all([loadImage(fgPath), loadImage(bgPath)]);
 
                     if (fgImg && bgImg) {
-                        imageCache.set(idx, { fgImg, bgImg });
-                       // console.log(`Cached images at index ${idx}`);
+                        state.imageCache.set(index, { fgImg, bgImg });
+                        // Optionally, log successful caching
+                        // console.log(`Cached images at index ${index}`);
                     } else {
-                        console.warn(`Skipping preload for invalid images at index: ${idx}`);
+                        console.warn(`Skipping preload for invalid images at index: ${index}`);
                     }
                 } catch (imageError) {
-                    console.warn(`Error loading images at index ${idx}:`, imageError);
+                    console.warn(`Error loading images at index ${index}:`, imageError);
                 }
             }
         }
     } catch (error) {
         console.error('Error during image preloading:', error);
     } finally {
-        isPreloading = false;
-        //console.log('Preloading completed.');
+        state.isPreloading = false;
     }
 }
 
-// Function to get indices to preload
-function getPreloadIndices() {
+// Function to Get Indices to Preload with Corresponding Folder Selections
+function getPreloadIndices(state) {
     const indices = [];
     const bufferRange = Math.floor(BUFFER_SIZE / 2); // Adjust as needed
-    const currentIndex = indexController.index;
+    const currentIndex = state.indexController.index;
 
     // Preload indices ahead and behind the current index
     for (let offset = -bufferRange; offset <= bufferRange; offset++) {
         let idx = currentIndex + offset;
-        if (idx > maxIndex) idx = idx % (maxIndex + 1);
-        if (idx < 0) idx = (maxIndex + 1) + idx;
+        if (idx > state.maxIndex) idx = idx % (state.maxIndex + 1);
+        if (idx < 0) idx = (state.maxIndex + 1) + idx;
         indices.push(idx);
     }
-    return indices;
-}
 
-// Function to Get Image Paths at a Specific Index
-function getImagePathsAtIndex(index) {
-    const fgFolder = mainFolders[main_folder];
-    const bgFolder = floatFolders[float_folder];
+    // Determine folder selections for each index based on the scheduler
+    const preloadInfo = indices.map(idx => {
+        // Find the latest folder change that occurred at or before this index
+        const applicableChanges = state.folderChangeSchedule.filter(change => change.index <= idx);
+        const latestChange = applicableChanges.length > 0 ? applicableChanges[applicableChanges.length - 1] : null;
 
-    if (!fgFolder || !bgFolder) {
-        // Folder not available
-        return { fgPath: '', bgPath: '' };
-    }
+        if (latestChange) {
+            return {
+                index: idx,
+                main_folder: latestChange.main_folder,
+                float_folder: latestChange.float_folder,
+            };
+        } else {
+            // Default folders if no changes have occurred yet
+            return {
+                index: idx,
+                main_folder: state.main_folder,
+                float_folder: state.float_folder,
+            };
+        }
+    });
 
-    if (!fgFolder.image_list || !Array.isArray(fgFolder.image_list)) {
-        // Invalid image_list
-        return { fgPath: '', bgPath: '' };
-    }
-
-    const fgImages = fgFolder.image_list;
-    const bgImages = bgFolder.image_list;
-
-    const fgMaxIndex = fgImages.length - 1;
-
-    let idx = index;
-
-    if (idx < 0) {
-        idx = 0;
-    } else if (idx > fgMaxIndex) {
-        idx = fgMaxIndex;
-    }
-
-    const fgIndex = idx % fgImages.length;
-    const bgIndex = idx % bgImages.length;
-    const fgPath = fgImages[fgIndex];
-    const bgPath = bgImages[bgIndex];
-    return { fgPath, bgPath };
+    return preloadInfo;
 }
 
 // Function to Get Maximum Index Based on Current Folders
-function getMaxIndex() {
-    const fgFolder = mainFolders[main_folder];
+function getMaxIndex(state) {
+    const fgFolder = state.mainFolders[state.main_folder];
     return fgFolder.image_list.length - 1;
 }
 
-// Render Loop Function
-let lastFrameTime = 0;
+function createRenderLoop(state) {
+    let lastFrameTime = 0;
 
-function renderLoop(timestamp) {
-    try {
-        // Initialize lastFrameTime during the first call
-        if (!lastFrameTime) lastFrameTime = timestamp;
+    return function renderLoop(timestamp) {
+        try {
+            if (!lastFrameTime) lastFrameTime = timestamp;
 
-        const elapsed = timestamp - lastFrameTime;
+            // Always calculate FPS
+            const elapsed = timestamp - lastFrameTime;
+            const { fps, frameTimes } = calculateFPS(state.frameTimes, FPS, elapsed);
+            state.fps = fps;
+            state.frameTimes = frameTimes;
 
-        if (elapsed > FRAME_DURATION) {
-            // Update FPS Calculation
-            frameTimes.push(elapsed);
-            if (frameTimes.length >= FPS) frameTimes.shift();
-            const averageDeltaTime = frameTimes.reduce((sum, time) => sum + time, 0) / frameTimes.length;
-            fps = Math.round(1000 / averageDeltaTime);
+            // Throttle rendering based on FRAME_DURATION
+            if (elapsed > FRAME_DURATION) {
+                console.log(`Render loop FPS: ${fps}, elapsed: ${elapsed.toFixed(2)} ms`);
 
-            // Throttle console logging to once per second
-            if (Math.floor(timestamp / 1000) !== Math.floor(lastFrameTime / 1000)) {
-                //console.log(`Elapsed: ${elapsed.toFixed(2)} ms, Average Delta Time: ${averageDeltaTime.toFixed(2)} ms, FPS: ${fps}`);
-            }
+                lastFrameTime = timestamp; // Reset last frame time
 
-            lastFrameTime = timestamp; // Reset the last frame time
+                const overallIndex = state.indexController.index;
 
-            const overallIndex = indexController.index; // Use index from the index controller
+                if (state.imageCache.has(overallIndex)) {
+                    // Your existing rendering and folder update logic
+                    changeFileSourceFolder(overallIndex, state);
+                    const { fgImg, bgImg } = state.imageCache.get(overallIndex);
 
-            if (imageCache.has(overallIndex)) {
-                const { fgImg, bgImg } = imageCache.get(overallIndex);
-                //console.log(`Rendering frame at index ${overallIndex}`);
+                    offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    drawImageWithAspect(offscreenCtx, fgImg);
+                    drawImageWithAspect(offscreenCtx, bgImg);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
 
-                // Update folders based on the current index
-                updateFolders(overallIndex);
+                    drawOverlayText(ctx, canvas, overallIndex, state.indexController, fgImg, bgImg, fps, state.imageCache);
 
-                // Clear and prepare the offscreen canvas
-                offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-                drawImageWithAspect(offscreenCtx, fgImg); // Foreground
-                drawImageWithAspect(offscreenCtx, bgImg); // Background
+                    state.indexController.increment();
 
-                // Clear and draw the main canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-
-                // debugging/display (optional)
-
-                //drawOverlayText(ctx, canvas, overallIndex, indexController, fgImg, bgImg, fps, imageCache);
-                // After rendering, increment the index
-                indexController.increment();
-
-                // Handle preloading based on cache size
-                if (imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
-                    //console.log('Cache running low. Initiating preloading.');
-                    preloadImages().catch(error => console.error('Preload Images Error:', error));
-
+                    if (state.imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
+                        state.needsPreloading = true;
+                    }
+                } else {
+                    state.needsPreloading = true;
                 }
-            } else {
-                //console.log(`Image for index ${overallIndex} not in cache. Waiting for preload.`);
-                preloadImages().catch(error => console.error('Preload Images Error:', error))
-                // Optionally, you can handle this case by showing a placeholder or skipping the frame
             }
+        } catch (error) {
+            console.error('Error in renderLoop:', error);
         }
-    } catch (error) {
-        console.error('Error in renderLoop:', error);
-    }
 
-    // Request the next frame
-    requestAnimationFrame(renderLoop);
+        requestAnimationFrame(renderLoop);
+    };
+}
+
+// Preloading Loop Function
+function startPreloadingLoop(state) {
+    async function preloadingLoop() {
+        if (state.needsPreloading) {
+            state.needsPreloading = false; // Reset the flag
+            await preloadImages(state);
+        }
+        // Schedule the next check
+        setTimeout(preloadingLoop, 100); // Adjust the interval as needed
+    }
+    preloadingLoop();
 }
 
 // Function to Start the Animation
 export async function startAnimation() {
-    if (renderLoopStarted) return;
-    renderLoopStarted = true;
+    const state = startAnimation.state;
+
+    if (state.renderLoopStarted) return;
+    state.renderLoopStarted = true;
 
     // Initialize IndexController
-    indexController.setIndex(0);
-    indexController.setDirection(1);
+    state.indexController.setIndex(0);
+    state.indexController.setDirection(1);
 
     // Clear the cache before starting
-    imageCache.clear();
+    state.imageCache.clear();
+
+    // Schedule initial folder changes
+    state.nextResetIndex = state.indexController.index + state.rand_start;
+    state.nextFloatFolderChangeIndex = state.indexController.index + ((FPS + 1) * state.rand_mult);
+    state.nextMainFolderChangeIndex = state.indexController.index + (2 + FPS * state.rand_mult);
 
     // Preload Initial Images
-    await preloadImages();
+    await preloadImages(state);
+
+    // Start the Preloading Loop
+    startPreloadingLoop(state);
 
     // Start the Rendering Loop
+    const renderLoop = createRenderLoop(state);
     requestAnimationFrame(renderLoop);
 }
 
 // Function to Initialize Folders and Load Data
 export async function initializeAnimation(mainData, floatData) {
-    mainFolders = mainData.folders;
-    floatFolders = floatData.folders;
+    // Encapsulate index and folder related globals within a state object
+    const state = {
+        maxIndex: 0,
+        indexController: null,
+        mainFolders: [],
+        floatFolders: [],
+        main_folder: 0,
+        float_folder: 0,
+        rand_mult: getRandomInt(1, 9),
+        rand_start: getRandomInt(FPS, 5 * FPS),
+        frameTimes: [],
+        fps: 0,
+        isPreloading: false,
+        folderChangeSchedule: [],
+        needsPreloading: false,
+        renderLoopStarted: false,
+        imageCache: new ImageCache(BUFFER_SIZE),
+        nextResetIndex: null,
+        nextFloatFolderChangeIndex: null,
+        nextMainFolderChangeIndex: null,
+        lastLoggedRemainingFloatIndices: -1, // For logging optimization
+        lastLoggedRemainingMainIndices: -1,  // For logging optimization
+    };
+
+    // Assign state to startAnimation for access in startAnimation
+    startAnimation.state = state;
+
+    state.mainFolders = mainData.folders;
+    state.floatFolders = floatData.folders;
 
     // Check if folders are empty or of unequal length
-    if (mainFolders.length === 0 || floatFolders.length === 0) {
+    if (state.mainFolders.length === 0 || state.floatFolders.length === 0) {
         console.error('No folders found in one or both JSON files.');
         return false;
     }
 
-    if (mainFolders.length !== floatFolders.length) {
+    if (state.mainFolders.length !== state.floatFolders.length) {
         console.error('The number of folders in main folders and float folders do not match.');
         return false;
     }
 
     // Verify that each folder has an image_list
-    for (let idx = 0; idx < mainFolders.length; idx++) {
-        const folder = mainFolders[idx];
+    for (let idx = 0; idx < state.mainFolders.length; idx++) {
+        const folder = state.mainFolders[idx];
         if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
             console.error(`Folder ${idx} in mainFolders is missing a valid 'image_list' array.`);
             return false;
         }
     }
 
-    for (let idx = 0; idx < floatFolders.length; idx++) {
-        const folder = floatFolders[idx];
+    for (let idx = 0; idx < state.floatFolders.length; idx++) {
+        const folder = state.floatFolders[idx];
         if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
             console.error(`Folder ${idx} in floatFolders is missing a valid 'image_list' array.`);
             return false;
         }
     }
 
-    maxIndex = getMaxIndex(); // Now that folders are initialized
-    indexController = new IndexController(maxIndex);
+    state.maxIndex = getMaxIndex(state); // Now that folders are initialized
+    state.indexController = new IndexController(state.maxIndex);
 
-// Subscribe to index changes
-indexController.onIndexChange((newIndex, direction, event) => {
-   // console.log(`Index changed to ${newIndex}, direction: ${direction}`);
+    // Subscribe to index changes
+    state.indexController.onIndexChange((newIndex, direction, event) => {
+        if (event.directionChanged) {
+            // Direction changed, clear the cache
+            state.imageCache.clear();
+            // Clear the folder change schedule as direction change affects folder selections
+            state.folderChangeSchedule = [];
+            console.log('Direction changed. Cache cleared and folder change schedule reset.');
 
-    if (event.directionChanged) {
-        // Direction changed, clear the cache
-        imageCache.clear();
-       // console.log('Direction changed. Cache cleared.');
-    }
+            // Set flag to initiate preloading
+            state.needsPreloading = true;
 
-    preloadImages().catch(error => console.error('Preload Images Error:', error));
-});
-
+            // Reschedule next folder changes based on new direction
+            state.nextResetIndex = newIndex + state.rand_start;
+            state.nextFloatFolderChangeIndex = newIndex + ((FPS + 1) * state.rand_mult);
+            state.nextMainFolderChangeIndex = newIndex + (2 + FPS * state.rand_mult);
+        }
+    });
 
     console.log('Folders initialized successfully.');
     return true;

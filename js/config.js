@@ -1,6 +1,6 @@
 // config.js
 
-export const FPS = 36;
+export const FPS = 30;
 export const FRAME_DURATION = 1000 / FPS;
 export const BUFFER_SIZE = FPS
 export const PINGPONG = true;
