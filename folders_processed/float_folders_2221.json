@@ -1,0 +1,142 @@
+[
+    {
+        "index": 1,
+        "folder_rel": "images/floatground/255_0_BG_OG",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 2,
+        "folder_rel": "images/floatground/255_0_BG_OG_alpha",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 3,
+        "folder_rel": "images/floatground/255_1_FaceBGOnly_p1",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 4,
+        "folder_rel": "images/floatground/255_2_FaceBGOnly_p2",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 5,
+        "folder_rel": "images/floatground/255_3_faceBGOnly_p3",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 6,
+        "folder_rel": "images/floatground/255_4_FaceBGOnly_p4",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 7,
+        "folder_rel": "images/floatground/255_5_face_digital_40x_nobg",
+        "first_png": "out_1215.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 8,
+        "folder_rel": "images/floatground/255_6_face_digital_anime_nobg",
+        "first_png": "out_1215.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 9,
+        "folder_rel": "images/floatground/255_7_face_bg_anime_npbn",
+        "first_png": "out_1215.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 10,
+        "folder_rel": "images/floatground/255_8_alphaOnly",
+        "first_png": "FaceBGAlpha1585.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 11,
+        "folder_rel": "images/floatground/255_9_faceBG_anime",
+        "first_png": "faceBG_anime_1400.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 12,
+        "folder_rel": "images/floatground/255_Z_BG_OG",
+        "first_png": "FaceBGOnly_0837.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 13,
+        "folder_rel": "images/floatground/255_Z_BG_faceSource",
+        "first_png": "benFaceSource0809.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": false,
+        "alpha_match": "NoAlpha",
+        "file_extension": ".webp"
+    },
+    {
+        "index": 14,
+        "folder_rel": "images/floatground/255_Z_alphaOnly",
+        "first_png": "FaceBGAlpha1585.webp",
+        "dimensions": "810x1080",
+        "file_count": 2221,
+        "has_alpha": true,
+        "alpha_match": "Match",
+        "file_extension": ".webp"
+    }
+]
