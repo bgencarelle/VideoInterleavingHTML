@@ -1,0 +1,19 @@
+{
+  "name": "videointerleavinghtml",
+  "version": "1.0.0",
+  "description": "VideoInterleaving is a platform designed to enable artists to create video installations that can be synced to almost any source. The project uses PNG/webp sequences and is controlled by random data and MIDI. It's a quick and dirty solution for artists who want to create dynamic video installations with a high degree of control.",
+  "main": "index.js",
+  "scripts": {
+    "build:js": "esbuild js/main.js --bundle --minify --outfile=dist/bundle.js",
+    "build:css": "csso css/styles.css --output dist/styles.min.css",
+    "build": "npm run build:js && npm run build:css",
+    "watch": "esbuild js/main.js --bundle --minify --outfile=dist/bundle.js --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "csso-cli": "^4.0.2",
+    "esbuild": "^0.24.0"
+  }
+}

@@ -3,7 +3,7 @@
 import {
     FPS, FRAME_DURATION, BUFFER_SIZE,
 } from './config.js';
-import { canvas, ctx, renderImages } from './canvas.js';
+import { renderImages } from './canvas.js';
 import { IndexController } from './indexController.js';
 import { FolderController } from './folderController.js';
 import { drawOverlayText, calculateFPS } from './utils.js';
@@ -28,10 +28,9 @@ function createRenderLoop(state) {
             state.frameTimes = frameTimes;
 
             // Throttle rendering based on FRAME_DURATION
-            if (elapsed >= FRAME_DURATION) {
-                // console.log(`Render loop FPS: ${fps}, elapsed: ${elapsed.toFixed(2)} ms`);
+            if (elapsed >= FRAME_DURATION-2) {
 
-                lastFrameTime = timestamp; // Reset last frame time
+                lastFrameTime += FRAME_DURATION; // Reset last frame time
 
                 const overallIndex = state.indexController.index;
 
@@ -40,18 +39,10 @@ function createRenderLoop(state) {
 
                     // Use the centralized renderImages function
                     renderImages(fgImg, bgImg);
-
-                    // Optionally, draw overlay text
-                    // drawOverlayText(ctx, canvas, overallIndex, state.indexController, fgImg, bgImg, fps, state.imageCache);
-
                     // Update folders based on current index and direction
                     state.folderController.updateFolders(overallIndex, state.indexController.direction);
-
-                    // Get maxIndex from FolderController
-                    const maxIndex = state.folderController.getMaxIndex();
-
                     // Increment the index
-                    state.indexController.increment(maxIndex);
+                    state.indexController.increment(state.maxIndex);
 
                     if (state.imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
                         state.needsPreloading = true;
@@ -94,8 +85,8 @@ export async function startAnimation() {
     state.renderLoopStarted = true;
 
     // Initialize IndexController
-    const maxIndex = state.folderController.getMaxIndex();
-    state.indexController.setIndex(0, maxIndex);
+    state.maxIndex = state.folderController.getMaxIndex();
+    state.indexController.setIndex(0, state.maxIndex);
     state.indexController.setDirection(1);
 
     // Clear the cache before starting
@@ -130,6 +121,7 @@ export async function initializeAnimation(mainData, floatData) {
         needsPreloading: false,
         renderLoopStarted: false,
         imageCache: null, // Will be initialized below
+        maxIndex: 0,
     };
 
     // Assign state to startAnimation for access in startAnimation

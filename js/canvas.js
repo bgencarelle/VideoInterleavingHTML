@@ -38,40 +38,6 @@ export function renderImages(fgImg, bgImg, shouldClear = true) {
 }
 
 /**
- * Renders the background image onto the background offscreen canvas.
- *
- * @param {HTMLImageElement} bgImg - The background image to draw.
- */
-export function renderBackground(bgImg) {
-    // Clear the background canvas
-    backgroundCtx.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
-
-    // Draw the background image with aspect ratio preserved
-    drawImageWithAspect(backgroundCtx, bgImg);
-
-    // Draw the background onto the main canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(backgroundCanvas, 0, 0, canvas.width, canvas.height);
-}
-
-/**
- * Renders the foreground image onto the foreground offscreen canvas,
- * then composites it with the background canvas onto the main canvas.
- *
- * @param {HTMLImageElement} fgImg - The foreground image to draw.
- */
-export function renderForeground(fgImg) {
-    // Clear the offscreen canvas
-    offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-
-    // Draw the foreground image with aspect ratio preserved
-    drawImageWithAspect(offscreenCtx, fgImg);
-
-    // Composite with the background
-    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-}
-
-/**
  * Initializes both the main and off-screen canvases to match the window size
  * and account for device pixel ratio for crisp rendering on high-DPI displays.
  */
@@ -94,17 +60,17 @@ export function initializeCanvas() {
     offscreenCanvas.style.height = `${height}px`;
     offscreenCtx.scale(dpr, dpr);
 
-    // Set background canvas dimensions and scale (optional)
+/*    // Set background canvas dimensions and scale (optional)
     backgroundCanvas.width = width * dpr;
     backgroundCanvas.height = height * dpr;
     backgroundCanvas.style.width = `${width}px`;
     backgroundCanvas.style.height = `${height}px`;
-    backgroundCtx.scale(dpr, dpr);
+    backgroundCtx.scale(dpr, dpr);*/
 
     // Enable image smoothing for better quality
-    ctx.imageSmoothingEnabled = true;
-    offscreenCtx.imageSmoothingEnabled = true;
-    backgroundCtx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = false;
+    offscreenCtx.imageSmoothingEnabled = false;
+    //backgroundCtx.imageSmoothingEnabled = true;
 }
 
 /**

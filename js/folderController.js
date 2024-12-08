@@ -2,6 +2,7 @@
 
 import { getRandomInt } from './utils.js';
 import { FPS } from './config.js';
+import { showModeOverlay } from './utils.js';
 
 export class FolderController {
     constructor(mainFolders, floatFolders) {
@@ -9,6 +10,9 @@ export class FolderController {
         this.floatFolders = floatFolders;
         this.main_folder = 0;
         this.float_folder = 0;
+
+        // Mode can be: 'RANDOM', 'EXTERNAL', 'INCREMENT'
+        this.mode = 'RANDOM';
 
         // Initial random values
         this.rand_mult = getRandomInt(1, 9);
@@ -18,223 +22,329 @@ export class FolderController {
         this.nextFloatFolderChangeIndex = null;
         this.nextMainFolderChangeIndex = null;
 
-        // Initially, we know the current folders at index 0
+        // Keep track of the last known index (used when applying manual folder changes)
+        this.lastKnownIndex = 0;
+
+        // Initial folder change schedule
         this.folderChangeSchedule = [{
             index: 0,
             main_folder: this.main_folder,
             float_folder: this.float_folder,
         }];
 
-        // Initialize next change indices and schedule initial future changes
+        // Debounce for external changes
+        this.pendingExternalChange = null;
+        this.debounceTimer = null;
+        this.debounceDelay = 200; // ms
+
+        // Initialize schedules and precompute
         this.scheduleInitialFolderChanges();
         this.scheduleFutureFolderChanges(0);
+        this.precomputeFullCycleFolders();
 
         // Listeners for folder changes
         this.listeners = [];
+
+        // Track direction for cycle detection
+        this.lastDirection = null;
+
+        // Setup controls
+        this.setupExternalControlHooks();
+    }
+
+    setupExternalControlHooks() {
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+
+            // Mode switching
+            if (key === 'r') this.setMode('RANDOM');
+            if (key === 'e') this.setMode('EXTERNAL');
+            if (key === 'i') this.setMode('INCREMENT');
+
+            // External mode folder controls only if mode is EXTERNAL
+            if (this.mode === 'EXTERNAL') {
+                let mainDelta = 0;
+                let floatDelta = 0;
+                if (key === 'q') mainDelta = 1;
+                if (key === 'a') mainDelta = -1;
+                if (key === 'w') floatDelta = 1;
+                if (key === 's') floatDelta = -1;
+
+                if (mainDelta !== 0 || floatDelta !== 0) {
+                    this.queueExternalChange({ mainDelta, floatDelta });
+                }
+            }
+        });
     }
 
     /**
-     * Schedules the initial folder changes based on current rand_start and rand_mult.
+     * Debounce: Only keep the last external input and apply after a delay.
      */
+    queueExternalChange(change) {
+        this.pendingExternalChange = change;
+
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+
+        this.debounceTimer = setTimeout(() => {
+            this.applyExternalChangeIfPending();
+        }, this.debounceDelay);
+    }
+
+    /**
+     * Apply the pending external change if available.
+     */
+    applyExternalChangeIfPending() {
+        if (!this.pendingExternalChange) return;
+
+        const { mainDelta, floatDelta } = this.pendingExternalChange;
+        this.pendingExternalChange = null; // Clear pending change
+
+        // Apply changes with rollover
+        this.main_folder = (this.main_folder + mainDelta) % this.mainFolders.length;
+        if (this.main_folder < 0) this.main_folder = this.mainFolders.length + this.main_folder;
+
+        this.float_folder = (this.float_folder + floatDelta) % this.floatFolders.length;
+        if (this.float_folder < 0) this.float_folder = this.floatFolders.length + this.float_folder;
+
+        this.applyManualFolderChange();
+    }
+
+    setMode(newMode) {
+        if (!['RANDOM', 'EXTERNAL', 'INCREMENT'].includes(newMode)) {
+            console.warn('[FolderController] Invalid mode requested:', newMode);
+            return;
+        }
+        if (this.mode !== newMode) {
+            this.mode = newMode;
+            showModeOverlay(`Mode: ${this.mode}`);
+        }
+    }
+
+    applyManualFolderChange() {
+        const index = this.lastKnownIndex || 0;
+        this.folderChangeSchedule.push({
+            index,
+            main_folder: this.main_folder,
+            float_folder: this.float_folder,
+        });
+        this.notifyListeners({ folderChanged: true });
+        // Immediate precompute for EXTERNAL mode changes or any manual changes
+        this.precomputeFullCycleFolders();
+        showModeOverlay(`External: Main=${this.main_folder}, Float=${this.float_folder}`);
+    }
+
     scheduleInitialFolderChanges() {
         this.nextResetIndex = this.rand_start;
         this.nextFloatFolderChangeIndex = (FPS + 1) * this.rand_mult;
         this.nextMainFolderChangeIndex = 2 + FPS * this.rand_mult;
-
-        console.log('[FolderController] Initial changes scheduled:', {
-            nextResetIndex: this.nextResetIndex,
-            nextFloatFolderChangeIndex: this.nextFloatFolderChangeIndex,
-            nextMainFolderChangeIndex: this.nextMainFolderChangeIndex,
-        });
     }
 
-    /**
-     * After a folder change occurs, schedule future folder changes.
-     * This ensures that the folderChangeSchedule always contains upcoming changes.
-     * @param {number} currentIndex - The current index at which a change occurred.
-     */
     scheduleFutureFolderChanges(currentIndex) {
-        console.log(`[FolderController] Scheduling future folder changes from index ${currentIndex}.`);
-
-        // Remove any future changes beyond the current index (cleanup)
+        // Cleanup old future changes
         const oldLength = this.folderChangeSchedule.length;
         this.folderChangeSchedule = this.folderChangeSchedule.filter(change => change.index <= currentIndex);
-        if (this.folderChangeSchedule.length !== oldLength) {
-            console.log('[FolderController] Cleaned up old future changes. New schedule length:', this.folderChangeSchedule.length);
+
+        // Random changes only in RANDOM mode
+        if (this.mode === 'RANDOM') {
+            const futureRandStart = getRandomInt(FPS, 5 * FPS);
+            const futureRandMultFloat = getRandomInt(1, 12);
+            const futureMainRandMult = getRandomInt(1, 9);
+
+            // Reset event
+            const nextResetIndex = currentIndex + futureRandStart;
+            this.folderChangeSchedule.push({
+                index: nextResetIndex,
+                main_folder: 0,
+                float_folder: 0,
+            });
+
+            // Float folder change event
+            const nextFloatChangeIndex = currentIndex + ((FPS + 1) * futureRandMultFloat);
+            const futureFloatFolder = getRandomInt(0, this.floatFolders.length - 1);
+            this.folderChangeSchedule.push({
+                index: nextFloatChangeIndex,
+                main_folder: this.main_folder,
+                float_folder: futureFloatFolder,
+            });
+
+            // Main folder change event
+            const nextMainChangeIndex = currentIndex + (2 + FPS * futureMainRandMult);
+            const futureMainFolder = getRandomInt(0, this.mainFolders.length - 1);
+            this.folderChangeSchedule.push({
+                index: nextMainChangeIndex,
+                main_folder: futureMainFolder,
+                float_folder: this.float_folder,
+            });
+
+            this.rand_start = futureRandStart;
+            this.rand_mult = futureMainRandMult;
+        } else {
+            //console.log('[FolderController] Not scheduling future random changes since mode is not RANDOM.');
         }
 
-        // Calculate future events
-        const futureRandStart = getRandomInt(FPS, 5 * FPS);
-        const futureRandMultFloat = getRandomInt(1, 12); // For float changes
-        const futureMainRandMult = getRandomInt(1, 9);   // For main changes
-
-        // Schedule future changes
-        // 1. Reset event
-        const nextResetIndex = currentIndex + futureRandStart;
-        this.folderChangeSchedule.push({
-            index: nextResetIndex,
-            main_folder: 0,
-            float_folder: 0,
-        });
-
-        // 2. Float folder change event
-        const nextFloatChangeIndex = currentIndex + ((FPS + 1) * futureRandMultFloat);
-        const futureFloatFolder = getRandomInt(0, this.floatFolders.length - 1);
-        this.folderChangeSchedule.push({
-            index: nextFloatChangeIndex,
-            main_folder: this.main_folder,
-            float_folder: futureFloatFolder,
-        });
-
-        // 3. Main folder change event
-        const nextMainChangeIndex = currentIndex + (2 + FPS * futureMainRandMult);
-        const futureMainFolder = getRandomInt(0, this.mainFolders.length - 1);
-        this.folderChangeSchedule.push({
-            index: nextMainChangeIndex,
-            main_folder: futureMainFolder,
-            float_folder: this.float_folder,
-        });
-
-        // Update rand_start and rand_mult for the next cycle
-        this.rand_start = futureRandStart;
-        this.rand_mult = futureMainRandMult;
-
-        console.log('[FolderController] Future changes scheduled:', {
-            nextResetIndex,
-            nextFloatChangeIndex,
-            nextMainChangeIndex,
-            futureMainFolder,
-            futureFloatFolder,
-            rand_start: this.rand_start,
-            rand_mult: this.rand_mult,
-        });
-
-        //console.log('[FolderController] Updated folderChangeSchedule:', this.folderChangeSchedule);
+        // As per original code, precompute after scheduling future changes
+        this.precomputeFullCycleFolders();
     }
 
-    /**
-     * Updates folders based on the current index and rules.
-     * @param {number} index - The current index.
-     * @param {number} direction - The current direction.
-     */
+    findLatestChangeForIndex(i) {
+        const changes = this.folderChangeSchedule;
+        let low = 0;
+        let high = changes.length - 1;
+        let result = null;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (changes[mid].index <= i) {
+                result = changes[mid];
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        return result;
+    }
+
+    precomputeFullCycleFolders() {
+        const maxIndex = this.getMaxIndex();
+        this.precomputedFolderMap = new Array(maxIndex + 1);
+        for (let i = 0; i <= maxIndex; i++) {
+            const latestChange = this.findLatestChangeForIndex(i);
+            if (latestChange) {
+                this.precomputedFolderMap[i] = {
+                    index: i,
+                    main_folder: latestChange.main_folder,
+                    float_folder: latestChange.float_folder,
+                };
+            } else {
+                this.precomputedFolderMap[i] = {
+                    index: i,
+                    main_folder: this.main_folder,
+                    float_folder: this.float_folder,
+                };
+            }
+        }
+    }
+
     updateFolders(index, direction) {
+        this.lastKnownIndex = index;
         let folderChanged = false;
         const oldMain = this.main_folder;
         const oldFloat = this.float_folder;
 
-        // Reset conditions based on direction
-        if (
-            (index < this.rand_start) ||
-            (direction === 1 && index > (10 * this.rand_mult) && index < (12 * this.rand_mult))
-        ) {
-            this.float_folder = 0;
-            this.main_folder = 0;
-            this.rand_start = getRandomInt(FPS, 5 * FPS);
-            folderChanged = true;
-
-            // Schedule the next reset
-            this.nextResetIndex = index + this.rand_start;
-        } else {
-            this.rand_start = getRandomInt(FPS, 5 * FPS);
-
-            // Change float folder at intervals
-            if (index % ((FPS + 1) * this.rand_mult) === 0) {
-                this.float_folder = getRandomInt(0, this.floatFolders.length - 1);
-                this.rand_mult = getRandomInt(1, 12); // Update random multiplier
-                console.log('[FolderController] Float folder changed at index', index, 'to:', this.float_folder);
+        if (this.mode === 'RANDOM') {
+            if ((index < this.rand_start) ||
+                (direction === 1 && index > (10 * this.rand_mult) && index < (12 * this.rand_mult))) {
+                this.float_folder = 0;
+                this.main_folder = 0;
+                this.rand_start = getRandomInt(FPS, 5 * FPS);
                 folderChanged = true;
+                this.nextResetIndex = index + this.rand_start;
+            } else {
+                this.rand_start = getRandomInt(FPS, 5 * FPS);
 
-                // Schedule the next float_folder change
-                this.nextFloatFolderChangeIndex = index + ((FPS + 1) * this.rand_mult);
+                if (index % ((FPS + 1) * this.rand_mult) === 0) {
+                    this.float_folder = getRandomInt(0, this.floatFolders.length - 1);
+                    this.rand_mult = getRandomInt(1, 12);
+                    folderChanged = true;
+                    this.nextFloatFolderChangeIndex = index + ((FPS + 1) * this.rand_mult);
+                }
+
+                if (index % (2 + FPS * this.rand_mult) === 0) {
+                    this.main_folder = getRandomInt(0, this.mainFolders.length - 1);
+                    this.rand_mult = getRandomInt(1, 9);
+                    folderChanged = true;
+                    this.nextMainFolderChangeIndex = index + (2 + FPS * this.rand_mult);
+                }
             }
 
-            // Change main folder at different intervals
-            if (index % (2 + FPS * this.rand_mult) === 0) {
-                this.main_folder = getRandomInt(0, this.mainFolders.length - 1);
-                this.rand_mult = getRandomInt(1, 9); // Update random multiplier
-                console.log('[FolderController] Main folder changed at index', index, 'to:', this.main_folder);
-                folderChanged = true;
+        } else if (this.mode === 'EXTERNAL') {
+            // External changes handled by debounce and applyManualFolderChange()
+        } else if (this.mode === 'INCREMENT') {
+            let changed = false;
+            if (index > 0 && index % FPS === 0) {
+                this.main_folder = (this.main_folder + 1) % this.mainFolders.length;
+                changed = true;
+            }
 
-                // Schedule the next main_folder change
-                this.nextMainFolderChangeIndex = index + (2 + FPS * this.rand_mult);
+            const floatInterval = Math.floor(FPS / 2);
+            if (floatInterval > 0 && index > 0 && index % floatInterval === 0) {
+                this.float_folder = (this.float_folder + 1) % this.floatFolders.length;
+                changed = true;
+            }
+
+            if (changed) {
+                folderChanged = true;
+                this.folderChangeSchedule.push({
+                    index: index,
+                    main_folder: this.main_folder,
+                    float_folder: this.float_folder,
+                });
+                // Original code also precomputed here
+                this.precomputeFullCycleFolders();
             }
         }
 
-        if (folderChanged) {
-            console.log('[FolderController] Folder changed at index', index, {
-                oldMain,
-                oldFloat,
-                newMain: this.main_folder,
-                newFloat: this.float_folder,
-            });
-
+        if (this.mode === 'RANDOM' && folderChanged) {
             this.folderChangeSchedule.push({
-                index: index, // The index at which the change occurred
+                index: index,
                 main_folder: this.main_folder,
                 float_folder: this.float_folder,
             });
-
-            // After recording the current change, schedule future changes
             this.scheduleFutureFolderChanges(index);
-
-            // Notify listeners that folders have changed
             this.notifyListeners({ folderChanged: true });
+        } else if ((this.mode === 'EXTERNAL' || this.mode === 'INCREMENT') && folderChanged) {
+            this.notifyListeners({ folderChanged: true });
+        }
+
+        // Cycle detection:
+        // If direction changes at index=0, we completed a forward or backward pass.
+        // Two such passes (0 -> maxIndex -> 0) define a full cycle.
+        // We track direction changes here if needed.
+        if (this.lastDirection === null) {
+            this.lastDirection = direction;
+        } else {
+            // Check if we returned to 0 and direction changed.
+            if (index === 0 && direction !== this.lastDirection) {
+                // We've hit a cycle boundary.
+                // If desired, we could call precomputeFullCycleFolders() here again,
+                // but per user instructions, it's not a big deal to always do it.
+                // It's enough to know we can detect it and we understand how cycles work.
+
+                // Example (not required):
+                // if (this.mode === 'RANDOM' || this.mode === 'INCREMENT') {
+                //     this.precomputeFullCycleFolders();
+                // }
+            }
+            this.lastDirection = direction;
         }
     }
 
-    /**
-     * Retrieves the current maximum index based on the current main_folder.
-     * @returns {number} The maximum index.
-     */
     getMaxIndex() {
         const fgFolder = this.mainFolders[this.main_folder];
         return fgFolder.image_list.length - 1;
     }
 
-    /**
-     * Registers a callback to be invoked when folders change.
-     * @param {function} callback - The callback function.
-     */
     onFolderChange(callback) {
         this.listeners.push(callback);
     }
 
-    /**
-     * Notifies all registered listeners of an event.
-     * @param {object} event - The event data.
-     */
     notifyListeners(event = {}) {
         this.listeners.forEach(callback => callback(event));
     }
 
-    /**
-     * Provides preload information for a given set of indices.
-     * @param {Array<number>} indices - The indices for which to provide preload info.
-     * @returns {Array} An array of preload information objects.
-     */
     getPreloadInfo(indices) {
-        const info = indices.map(idx => {
-            // Find the latest folder change that occurred at or before this idx
-            const applicableChanges = this.folderChangeSchedule.filter(change => change.index <= idx);
-            const latestChange = applicableChanges.length > 0 ? applicableChanges[applicableChanges.length - 1] : null;
+        const maxIndex = this.getMaxIndex();
+        return indices.map(idx => {
+            if (idx < 0) idx = 0;
+            if (idx > maxIndex) idx = maxIndex;
 
-            if (latestChange) {
-                return {
-                    index: idx,
-                    main_folder: latestChange.main_folder,
-                    float_folder: latestChange.float_folder,
-                };
-            } else {
-                // Should not happen since we always have at least one entry at index 0
-                return {
-                    index: idx,
-                    main_folder: this.main_folder,
-                    float_folder: this.float_folder,
-                };
-            }
+            const entry = this.precomputedFolderMap[idx];
+            return entry ? entry : {
+                index: idx,
+                main_folder: this.main_folder,
+                float_folder: this.float_folder,
+            };
         });
-
-        //console.log('[FolderController] getPreloadInfo called with indices:', indices, 'Result:', info);
-        return info;
     }
 }
