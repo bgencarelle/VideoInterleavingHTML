@@ -1,4 +1,6 @@
+//imageCache.js
 import { BUFFER_SIZE } from './config.js';
+
 
 /**
  * Loads an image and returns a Promise that resolves with the image.

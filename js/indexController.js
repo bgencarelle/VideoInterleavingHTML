@@ -1,7 +1,5 @@
 // js/indexController.js
 
-import { calculateFPS } from './utils.js';
-
 export class IndexController {
     constructor() {
         this.index = 0;
@@ -24,8 +22,8 @@ export class IndexController {
     setIndex(newIndex, maxIndex) {
         if (newIndex >= 0 && newIndex <= maxIndex) {
             this.index = newIndex;
-            this.logFPS(); // Log FPS during setIndex
-            this.notifyListeners({ indexChanged: true });
+            this.logIPS(); // Log FPS during setIndex
+            this.notifyListeners({indexChanged: true});
         } else {
             console.warn(`Index out of bounds: ${newIndex}`);
         }
@@ -50,10 +48,10 @@ export class IndexController {
             directionChanged = true;
         }
 
-        this.logFPS(); // Log FPS during increment
+        this.logIPS(); // Log FPS during increment
 
         // Notify listeners
-        this.notifyListeners({ directionChanged });
+        this.notifyListeners({directionChanged});
     }
 
     /**
@@ -64,7 +62,7 @@ export class IndexController {
         if (newDirection === 1 || newDirection === -1) {
             if (this.direction !== newDirection) {
                 this.direction = newDirection;
-                this.notifyListeners({ directionChanged: true });
+                this.notifyListeners({directionChanged: true});
             }
         } else {
             console.warn(`Invalid direction: ${newDirection}`);
@@ -88,19 +86,29 @@ export class IndexController {
     }
 
     /**
-     * Logs the Frames Per Second (FPS) based on index changes.
+     * Logs the Index Per Second (IPS) based on index changes.
      */
-    logFPS() {
+    logIPS() {
         const currentTime = performance.now();
         const elapsed = currentTime - this.lastIndexChangeTime;
         this.lastIndexChangeTime = currentTime;
 
-        const { fps, frameTimes } = calculateFPS(this.frameTimes, 60, elapsed);
-        this.frameTimes = frameTimes;
+        // Add the elapsed time to the sliding window
+        this.frameTimes.push(elapsed);
 
-        if (fps !== this.lastLoggedFPS) {
-            //console.log(`Index FPS: ${fps}, index: ${this.index}, direction: ${this.direction}`);
-            this.lastLoggedFPS = fps;
+        // Keep only the last second's worth of time records
+        let totalElapsed = 0;
+        while (this.frameTimes.length > 0 && totalElapsed + this.frameTimes[0] > 1000) {
+            this.frameTimes.shift(); // Remove old frame times
+        }
+        totalElapsed = this.frameTimes.reduce((a, b) => a + b, 0);
+
+        // Calculate IPS as the number of changes in the last second
+        const ips = (this.frameTimes.length / totalElapsed) * 1000; // Convert to changes per second
+
+        if (ips !== this.lastLoggedFPS) {
+            //console.log(`Index IPS: ${ips.toFixed(2)}, index: ${this.index}, direction: ${this.direction}`);
+            this.lastLoggedFPS = ips; // Update the last logged value
         }
     }
 
