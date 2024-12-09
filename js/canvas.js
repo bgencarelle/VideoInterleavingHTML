@@ -6,9 +6,12 @@ export const ctx = canvas.getContext('2d');
 export const offscreenCanvas = document.createElement('canvas');
 export const offscreenCtx = offscreenCanvas.getContext('2d');
 
-// Additional offscreen canvas for static background (optional)
-export const backgroundCanvas = document.createElement('canvas');
-export const backgroundCtx = backgroundCanvas.getContext('2d');
+// Cached variables to store DPR and drawing parameters
+let cachedDpr = 1;
+let cachedCssWidth = 0;
+let cachedCssHeight = 0;
+let cachedCanvasAspect = 1;
+let cachedDrawParams = null;
 
 /**
  * Renders the foreground and background images onto the offscreen canvas,
@@ -24,9 +27,16 @@ export function renderImages(fgImg, bgImg, shouldClear = true) {
         offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
     }
 
-    // Draw the foreground and background images with aspect ratio preserved
-    drawImageWithAspect(offscreenCtx, fgImg);
-    drawImageWithAspect(offscreenCtx, bgImg);
+    // If drawing parameters are not cached, compute and cache them
+    if (!cachedDrawParams) {
+        cachedDrawParams = computeDrawParameters(offscreenCtx, fgImg);
+    }
+
+    const { offsetX, offsetY, drawWidth, drawHeight } = cachedDrawParams;
+
+    // Draw the foreground and background images using cached parameters
+    offscreenCtx.drawImage(fgImg, offsetX, offsetY, drawWidth, drawHeight);
+    offscreenCtx.drawImage(bgImg, offsetX, offsetY, drawWidth, drawHeight);
 
     if (shouldClear) {
         // Clear the main canvas
@@ -42,68 +52,59 @@ export function renderImages(fgImg, bgImg, shouldClear = true) {
  * and account for device pixel ratio for crisp rendering on high-DPI displays.
  */
 export function initializeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
+    cachedDpr = window.devicePixelRatio || 1;
     const width = window.innerWidth;
     const height = window.innerHeight;
 
+    cachedCssWidth = width;
+    cachedCssHeight = height;
+    cachedCanvasAspect = width / height;
+    cachedDrawParams = null; // Reset cached draw parameters on resize
+
     // Set main canvas dimensions and scale
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    canvas.width = width * cachedDpr;
+    canvas.height = height * cachedDpr;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
+    ctx.scale(cachedDpr, cachedDpr);
 
     // Set off-screen canvas dimensions and scale
-    offscreenCanvas.width = width * dpr;
-    offscreenCanvas.height = height * dpr;
+    offscreenCanvas.width = width * cachedDpr;
+    offscreenCanvas.height = height * cachedDpr;
     offscreenCanvas.style.width = `${width}px`;
     offscreenCanvas.style.height = `${height}px`;
-    offscreenCtx.scale(dpr, dpr);
-
-/*    // Set background canvas dimensions and scale (optional)
-    backgroundCanvas.width = width * dpr;
-    backgroundCanvas.height = height * dpr;
-    backgroundCanvas.style.width = `${width}px`;
-    backgroundCanvas.style.height = `${height}px`;
-    backgroundCtx.scale(dpr, dpr);*/
+    offscreenCtx.scale(cachedDpr, cachedDpr);
 
     // Enable image smoothing for better quality
     ctx.imageSmoothingEnabled = false;
     offscreenCtx.imageSmoothingEnabled = false;
-    //backgroundCtx.imageSmoothingEnabled = true;
+    // backgroundCtx.imageSmoothingEnabled = true;
 }
 
 /**
- * Draws an image on the provided context while preserving its aspect ratio.
- * Optimized for performance by minimizing calculations.
+ * Computes and returns the drawing parameters for an image while preserving its aspect ratio.
  *
- * @param {CanvasRenderingContext2D} context - The canvas context to draw on.
- * @param {HTMLImageElement} img - The image to draw.
+ * @param {CanvasRenderingContext2D} context - The canvas context to use for calculations.
+ * @param {HTMLImageElement} img - The image for which to compute draw parameters.
+ * @returns {Object} An object containing drawWidth, drawHeight, offsetX, and offsetY.
  */
-export function drawImageWithAspect(context, img) {
-    // Get the device pixel ratio
-    const dpr = window.devicePixelRatio || 1;
-
-    // Calculate CSS pixel dimensions
-    const cssWidth = context.canvas.width / dpr;
-    const cssHeight = context.canvas.height / dpr;
-
-    const canvasAspect = cssWidth / cssHeight;
+function computeDrawParameters(context, img) {
+    const canvasAspect = cachedCanvasAspect;
     const imgAspect = img.width / img.height;
 
     let drawWidth, drawHeight, offsetX, offsetY;
 
     if (imgAspect > canvasAspect) {
         // Image is wider than canvas
-        drawWidth = cssWidth;
+        drawWidth = cachedCssWidth;
         drawHeight = drawWidth / imgAspect;
         offsetX = 0;
-        offsetY = (cssHeight - drawHeight) / 2;
+        offsetY = (cachedCssHeight - drawHeight) / 2;
     } else {
         // Image is taller than canvas
-        drawHeight = cssHeight;
+        drawHeight = cachedCssHeight;
         drawWidth = drawHeight * imgAspect;
-        offsetX = (cssWidth - drawWidth) / 2;
+        offsetX = (cachedCssWidth - drawWidth) / 2;
         offsetY = 0;
     }
 
@@ -113,11 +114,9 @@ export function drawImageWithAspect(context, img) {
     offsetX = Math.round(offsetX);
     offsetY = Math.round(offsetY);
 
-    // Draw the image at the calculated position with the determined size
-    context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+    return { drawWidth, drawHeight, offsetX, offsetY };
 }
 
-// Initialize canvases on load
 initializeCanvas();
 
 // Optimize resizing by debouncing the resize event using requestAnimationFrame
