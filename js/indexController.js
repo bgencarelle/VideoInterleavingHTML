@@ -1,4 +1,5 @@
 // js/indexController.js
+import { FRAME_DURATION } from './config.js';
 
 export class IndexController {
     constructor() {
@@ -12,6 +13,10 @@ export class IndexController {
         this.frameTimes = []; // Stores elapsed times for FPS calculation
         this.lastLoggedIPS = -1; // To avoid redundant logs
         this.lastIndexChangeTime = performance.now(); // Initialize with current timestamp
+
+        // Time-based indexing
+        this.frameDuration = FRAME_DURATION; // Duration per frame in milliseconds
+        this.startTime = performance.now(); // Reference start time
     }
 
     /**
@@ -21,48 +26,67 @@ export class IndexController {
      */
     setIndex(newIndex, maxIndex) {
         if (newIndex >= 0 && newIndex <= maxIndex) {
-            this.index = newIndex;
-            this.logIPS(); // Log FPS during setIndex
-            this.notifyListeners({indexChanged: true});
+            if (this.index !== newIndex) {
+                this.index = newIndex;
+                this.logIPS(); // Log IPS during setIndex
+                this.notifyListeners({ indexChanged: true });
+            }
         } else {
             console.warn(`Index out of bounds: ${newIndex}`);
         }
     }
 
     /**
-     * Increments the current index based on the direction.
-     * Handles direction reversal at boundaries and logs FPS.
+     * Updates the current index based on the current timestamp.
+     * Calculates the index directly from the elapsed time since start.
+     * @param {number} currentTimestamp - The current timestamp in milliseconds.
      * @param {number} maxIndex - The maximum allowed index.
      */
-    increment(maxIndex) {
-        let directionChanged = false;
-        this.index += this.direction;
+    update(currentTimestamp, maxIndex) {
+        const elapsedTime = currentTimestamp - this.startTime;
+        const totalFrames = Math.floor(elapsedTime / this.frameDuration);
 
-        if (this.index > maxIndex) {
-            this.index = maxIndex;
-            this.direction *= -1; // Reverse direction
-            directionChanged = true;
-        } else if (this.index < 0) {
-            this.index = 0;
-            this.direction *= -1; // Reverse direction
-            directionChanged = true;
+        const cycleLength = maxIndex * 2; // Forward and backward traversal
+        const currentCycleFrame = totalFrames % cycleLength;
+
+        let newIndex, newDirection;
+
+        if (currentCycleFrame < maxIndex) {
+            // Forward traversal
+            newIndex = currentCycleFrame;
+            newDirection = 1;
+        } else {
+            // Backward traversal
+            newIndex = cycleLength - currentCycleFrame;
+            newDirection = -1;
         }
 
-        this.logIPS(); // Log IPS during increment
+        // Update direction if it has changed
+        if (this.direction !== newDirection) {
+            this.direction = newDirection;
+            this.notifyListeners({ directionChanged: true });
+        }
 
-        // Notify listeners
-        this.notifyListeners({directionChanged});
+        // Update index if it has changed
+        if (this.index !== newIndex) {
+            this.index = newIndex;
+            this.logIPS(); // Log IPS during index update
+            this.notifyListeners({ indexChanged: true });
+        }
     }
 
     /**
-     * Sets the direction of index increment/decrement.
+     * Sets the direction of index traversal.
+     * Directly affects the direction for the next traversal cycle.
      * @param {number} newDirection - The new direction (1 or -1).
      */
     setDirection(newDirection) {
         if (newDirection === 1 || newDirection === -1) {
             if (this.direction !== newDirection) {
                 this.direction = newDirection;
-                this.notifyListeners({directionChanged: true});
+                this.notifyListeners({ directionChanged: true });
+                // Adjust startTime to reflect the direction change immediately
+                this.startTime = performance.now() - (this.index * this.frameDuration);
             }
         } else {
             console.warn(`Invalid direction: ${newDirection}`);
@@ -87,6 +111,7 @@ export class IndexController {
 
     /**
      * Logs the Index Per Second (IPS) based on index changes.
+     * This is not to calculate Frames Per Second, but currently just for logging
      */
     logIPS() {
         const currentTime = performance.now();
@@ -98,7 +123,7 @@ export class IndexController {
 
         // Keep only the last second's worth of time records
         let totalElapsed = 0;
-        while (this.frameTimes.length > 0 && totalElapsed + this.frameTimes[0] > 10) {
+        while (this.frameTimes.length > 0 && totalElapsed + this.frameTimes[0] > 1000) {
             this.frameTimes.shift(); // Remove old frame times
         }
         totalElapsed = this.frameTimes.reduce((a, b) => a + b, 0);
@@ -113,7 +138,8 @@ export class IndexController {
     }
 
     /**
-     * Retrieves the indices to preload based on the buffer size.
+     * Retrieves the indices to preload based on the buffer size and current direction.
+     * Prioritizes preloading in the traversal direction.
      * @param {number} bufferSize - The size of the buffer.
      * @returns {Array<number>} An array of indices to preload.
      */
@@ -121,13 +147,23 @@ export class IndexController {
         const indices = [];
         const bufferRange = Math.floor(bufferSize / 2);
         const currentIndex = this.index;
+        const direction = this.direction;
 
-        // Preload indices ahead and behind the current index
-        for (let offset = -bufferRange; offset <= bufferRange; offset++) {
-            let idx = currentIndex + offset;
-            // idx can be negative or exceed max index; we handle that later
-            indices.push(idx);
+        // Depending on the direction, prioritize preloading ahead or behind
+        for (let i = 1; i <= bufferRange; i++) {
+            // Preload in the traversal direction first
+            let idxForward = currentIndex + direction * i;
+            indices.push(idxForward);
         }
+
+        for (let i = 1; i <= bufferRange; i++) {
+            // Preload opposite direction second
+            let idxBackward = currentIndex - direction * i;
+            indices.push(idxBackward);
+        }
+
+        // Include the current index to ensure it's loaded
+        indices.unshift(currentIndex);
 
         return indices;
     }

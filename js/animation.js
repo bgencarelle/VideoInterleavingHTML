@@ -1,7 +1,10 @@
 // js/animation.js
 
 import {
-    FPS, FRAME_DURATION, BUFFER_SIZE,
+    FPS,
+    FRAME_DURATION,
+    BUFFER_SIZE,
+    MAX_CONCURRENT_FETCHES,
 } from './config.js';
 import { renderImages } from './canvas.js';
 import { IndexController } from './indexController.js';
@@ -15,41 +18,41 @@ import { ImageCache } from './imageCache.js';
  * @returns {function} The render loop function.
  */
 function createRenderLoop(state) {
-    let lastFrameTime = 0;
+    let lastFrameTime = performance.now();
+    state.indexController.startTime = lastFrameTime; // Initialize startTime
 
     return function renderLoop(timestamp) {
         try {
-            if (!lastFrameTime) lastFrameTime = timestamp;
-
-            // Always calculate FPS
+            // Calculate elapsed time since last frame for FPS calculation
             const elapsed = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+
             const { fps, frameTimes } = calculateFPS(state.frameTimes, FPS, elapsed);
             state.fps = fps;
             state.frameTimes = frameTimes;
 
-            // Throttle rendering based on FRAME_DURATION
-            if (elapsed >= FRAME_DURATION-2) {
+            // Update the index based on current timestamp
+            state.indexController.update(timestamp, state.maxIndex);
 
-                lastFrameTime += FRAME_DURATION; // Reset last frame time
+            const overallIndex = state.indexController.index;
+            const currentDirection = state.indexController.direction;
 
-                const overallIndex = state.indexController.index;
+            if (state.imageCache.has(overallIndex)) {
+                const { fgImg, bgImg } = state.imageCache.get(overallIndex);
 
-                if (state.imageCache.has(overallIndex)) {
-                    const { fgImg, bgImg } = state.imageCache.get(overallIndex);
+                // Render images
+                renderImages(fgImg, bgImg);
 
-                    // Use the centralized renderImages function
-                    renderImages(fgImg, bgImg);
-                    // Update folders based on current index and direction
-                    state.folderController.updateFolders(overallIndex, state.indexController.direction);
-                    // Increment the index
-                    state.indexController.increment(state.maxIndex);
+                // Update folders based on current index and direction
+                state.folderController.updateFolders(overallIndex, currentDirection);
+            } else {
+                console.warn(`Image at index ${overallIndex} not in cache.`);
+                state.needsPreloading = true; // Trigger preloading if image is missing
+            }
 
-                    if (state.imageCache.sizeCurrent() < BUFFER_SIZE / 2) {
-                        state.needsPreloading = true;
-                    }
-                } else {
-                    state.needsPreloading = true;
-                }
+            // Schedule buffer preloading if cache size is below BUFFER_SIZE / 2
+            if (state.imageCache.size() < BUFFER_SIZE / 2) {
+                state.needsPreloading = true;
             }
         } catch (error) {
             console.error('Error in renderLoop:', error);
@@ -64,13 +67,22 @@ function createRenderLoop(state) {
  * @param {object} state - The state object containing necessary properties.
  */
 function startPreloadingLoop(state) {
+    if (state.preloadingLoopRunning) return; // Prevent multiple loops
+    state.preloadingLoopRunning = true;
+
     async function preloadingLoop() {
-        if (state.needsPreloading) {
-            state.needsPreloading = false; // Reset the flag
-            await state.imageCache.preloadImages(); // Use preloadImages from ImageCache
+        try {
+            if (state.needsPreloading) {
+                console.log('Preloading needed. Starting preloading...');
+                state.needsPreloading = false; // Reset the flag
+                await state.imageCache.preloadImages(); // Preload based on current direction and index
+            }
+        } catch (error) {
+            console.error('Error in preloadingLoop:', error);
+        } finally {
+            // Schedule the next check
+            setTimeout(preloadingLoop, 50); // Adjust the interval as needed
         }
-        // Schedule the next check
-        setTimeout(preloadingLoop, 100); // Adjust the interval as needed
     }
     preloadingLoop();
 }
@@ -93,7 +105,7 @@ export async function startAnimation() {
     state.imageCache.clear();
 
     // Preload Initial Images
-    await state.imageCache.preloadImages(); // Use preloadImages from ImageCache
+    await state.imageCache.preloadImages(); // Preload based on initial direction
 
     // Start the Preloading Loop
     startPreloadingLoop(state);
@@ -120,6 +132,7 @@ export async function initializeAnimation(mainData, floatData) {
         fps: 0,
         needsPreloading: false,
         renderLoopStarted: false,
+        preloadingLoopRunning: false, // New flag for preloading loop
         imageCache: null, // Will be initialized below
         maxIndex: 0,
     };
@@ -172,17 +185,18 @@ export async function initializeAnimation(mainData, floatData) {
         if (event.folderChanged) {
             // Folders changed, set flag to initiate preloading
             state.needsPreloading = true;
+            console.log('Folder changed. Needs preloading.');
         }
     });
 
-    // Subscribe to index changes
+    // Subscribe to index changes, particularly direction changes
     state.indexController.onIndexChange((newIndex, direction, event) => {
         if (event.directionChanged) {
             // Direction changed, clear the cache
             state.imageCache.clear();
             console.log('Direction changed. Cache cleared.');
 
-            // Set flag to initiate preloading
+            // Set flag to initiate preloading based on new direction
             state.needsPreloading = true;
         }
     });

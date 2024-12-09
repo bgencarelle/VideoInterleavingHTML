@@ -178,9 +178,9 @@ cython_debug/
 /generated_img_lists/!/server.log
 *.old
 /node_modules/
-/generated_img_lists/main_images.json
-/generated_img_lists/float_images.json
-/generated_img_lists/main_images.json.gz
-/generated_img_lists/float_images.json.gz
-
-
+/generated_img_lists/
+/dist/
+/dist/*
+*/generated_img_lists/
+/folders_processed/*
+/folders_processed/
