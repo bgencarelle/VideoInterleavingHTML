@@ -1,44 +1,105 @@
+
 # VideoInterleaving
 
-VideoInterleaving is a platform designed to enable artists to create video installations that can be synced to almost any source. The project uses PNG/webp sequences and is controlled by random data and MIDI. It's a quick and dirty solution for artists who want to create dynamic video installations with a high degree of control.
+VideoInterleaving is a platform designed for artists to create dynamic and synchronized video installations. By leveraging PNG/WebP image sequences, it ensures minimal decoding time and offers flexibility through random data generation. It's a quick and efficient solution for creating responsive, high-quality video art installations in JavaScript.
 
 ## Features
 
-- **Frame Switching:** The project allows you to switch from frame to frame between variations of a video sequence, using an external or internal timecode sequencer.
-- **Image Sequences:** By using image sequences, there is no decoding time and the project can switch sources from one frame to the next.
-- **Transparency Support:** The project supports transparency in video sequences, even on low-end machines.
+### Frame-by-Frame Switching
+Switch between video sequence frames seamlessly using internal or external timecode sequencers for precise synchronization.
+
+### Optimized Image Sequences
+Uses image sequences (PNG/WebP) to eliminate decoding delays, enabling instant source changes.
+
+### Transparency Support
+Fully supports transparency in video sequences, even on low-performance hardware.
+
+### Hybrid Operation Modes
+Operate in standalone or hybrid modes depending on your project's needs.
+
+### Server Functionality
+Includes optional server capabilities for remote control or distributed setups.
 
 ## Requirements
 
-- Python
-- A reasonably fast storage solution
+- **Software:**  
+  - Node.js (with npm)  
+  - A modern browser that supports JavaScript and HTML5
+
+- **Hardware:**  
+  - A reasonably fast storage solution for handling large image sequences efficiently
 
 ## Installation
 
-1. Install all of the project's dependencies.
-2. Store your image sequences in a location of your choice.
-3. Change the `setup` variable to `true` in `main.py`.
+### Clone the Repository
+
+```bash
+git clone <repository-url>
+cd VideoInterleaving
+```
+
+### Install Dependencies
+
+Use npm to install the required dependencies:
+
+```bash
+npm install
+```
+
+### Build the Project
+
+Bundle and optimize the JavaScript and CSS files:
+
+```bash
+npm run build
+```
+
+### Prepare Image Sequences
+
+Store your PNG/WebP sequences in a dedicated folder. Update any configuration files to point to this location if necessary.
+
+### Run the Project
+
+Open `index.html` in your preferred browser to start the application.
 
 ## Usage
 
-The project has different modes of operation:
+### Modes of Operation
 
-- **Standalone Mode**
-- **Client Mode:** Includes MTC (Midi Time Code)
-- **Hybrid Mode**
+#### Standalone Mode
+Runs the project independently without external synchronization.
 
-Server functionalities are also included in the project.
+#### Hybrid Mode
+Combines standalone features with optional server functionality for distributed setups.
+
+### Running the Application
+
+1. Open `index.html` in a browser.
+2. Follow on-screen instructions or configure options in the code as needed.
 
 ## Contributing
 
-The project is still very much in development and was initially created based on specific needs. Contributions towards generalizing the project and improving the code style are welcome.
+VideoInterleaving is a work-in-progress, originally created for specific artistic needs. Contributions are welcome to improve functionality, generalize its use cases, and enhance code quality.
+
+### To contribute:
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Submit a pull request with a clear explanation of your changes.
 
 ## Authors
 
-- Ben Gencarelle
-- ChatGPT
+- **Ben Gencarelle**  
+  Original creator and developer of the project.  
+  [Ben's YouTube Page](https://www.youtube.com/your-channel)
+
+- **ChatGPT**  
+  Contributor to the documentation and optimization process.
 
 ## Demos
 
-Demos of the project in action can be found on [Ben's YouTube page](https://www.youtube.com/@bgencarelle).
+Explore demos of VideoInterleaving in action on Ben's YouTube page.
 
+## License
+
+This project is licensed under [LICENSE_NAME]. Replace this with the appropriate license type (e.g., MIT, Apache, GPL).
