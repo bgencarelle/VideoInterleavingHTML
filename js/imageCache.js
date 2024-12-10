@@ -17,8 +17,7 @@ async function loadImageBitmap(path) {
         const blob = await response.blob();
         try {
             // createImageBitmap decodes off the main thread
-            const bitmap = await createImageBitmap(blob);
-            return bitmap;
+            return await createImageBitmap(blob);
         } catch (decodeError) {
             console.error(`Failed to decode image bitmap: ${path}`, decodeError);
             return null;
@@ -30,129 +29,109 @@ async function loadImageBitmap(path) {
 }
 
 /**
- * ImageCache is responsible for caching image pairs (foreground/background) at certain indices.
- * It relies on IndexController and FolderController to know which indices and folders to preload.
- * Precomputation ensures that when the renderer requests an index, the needed images are likely ready.
+ * ImageCache is responsible for caching image pairs (foreground/background) based on frame numbers.
+ * It relies on IndexController and FolderController to know which frames to preload.
+ * Preloading is managed to ensure that the buffer is always stocked with upcoming frames.
  */
 export class ImageCache {
     /**
-     * @param {number} size - Maximum number of items to hold in the cache.
+     * @param {number} bufferSize - Maximum number of frames to hold in the cache.
      * @param {object} options - Additional references for folder and index controllers.
+     * @param {IndexController} options.indexController - The IndexController instance.
+     * @param {FolderController} options.folderController - The FolderController instance.
+     * @param {Array<Object>} options.mainFolders - Array of main folder objects.
+     * @param {Array<Object>} options.floatFolders - Array of float folder objects.
      */
-    constructor(size, options = {}) {
-        this.size = size;
-        this.cache = new Map(); // Map<index, { fgImg, bgImg }>
+    constructor(bufferSize, options = {}) {
+        this.bufferSize = bufferSize;
+        this.cache = new Map(); // Map<frameNumber, { fgImg, bgImg }>
         this.indexController = options.indexController;
         this.folderController = options.folderController;
         this.mainFolders = options.mainFolders;
         this.floatFolders = options.floatFolders;
         this.isPreloading = false; // Prevent concurrent preloads
+
+        // Track the highest frame number preloaded
+        this.highestPreloadedFrame = -1;
     }
 
     /**
-     * Store an item in the cache. If the cache is full, removes the oldest entry.
-     * @param {number} index - The index for the cached item.
+     * Stores an image pair in the cache. If the cache exceeds the buffer size, removes the oldest entry.
+     * @param {number} frameNumber - The frame number for the cached images.
      * @param {object} item - The { fgImg, bgImg } object, both are ImageBitmaps.
      */
-    set(index, item) {
-        if (this.cache.size >= this.size) {
-            const oldestKey = this.cache.keys().next().value;
-            this.cache.delete(oldestKey);
-            console.log(`Cache full. Removed oldest image at index: ${oldestKey}`);
+    set(frameNumber, item) {
+        this.cache.set(frameNumber, item);
+        //console.log(`Cached images at frame: ${frameNumber}`);
+
+        // Update the highest preloaded frame
+        if (frameNumber > this.highestPreloadedFrame) {
+            this.highestPreloadedFrame = frameNumber;
         }
-        this.cache.set(index, item);
-        console.log(`Cached images at index: ${index}`);
+
+        // Trim the cache to maintain buffer size
+        this.trimCache();
     }
 
     /**
-     * Retrieve an item from the cache.
-     * @param {number} index - The index for the requested item.
+     * Retrieves an image pair from the cache based on the frame number.
+     * @param {number} frameNumber - The frame number for the requested images.
      * @returns {object|undefined} - The cached { fgImg, bgImg } or undefined if not found.
      */
-    get(index) {
-        return this.cache.get(index);
+    get(frameNumber) {
+        return this.cache.get(frameNumber);
     }
 
     /**
-     * Check if an item exists in the cache.
-     * @param {number} index - The index to check.
-     * @returns {boolean} True if the item is cached, false otherwise.
+     * Checks if an image pair exists in the cache for a given frame number.
+     * @param {number} frameNumber - The frame number to check.
+     * @returns {boolean} True if the images are cached, false otherwise.
      */
-    has(index) {
-        return this.cache.has(index);
+    has(frameNumber) {
+        return this.cache.has(frameNumber);
     }
 
     /**
-     * Clears the entire cache.
-     * Other scripts might call this (for example, on mode switches), so we keep it intact.
-     */
-    clear() {
-        this.cache.clear();
-        console.log('Image cache cleared.');
-    }
-
-    /**
-     * Returns the current number of cached items.
-     * @returns {number} The size of the cache.
-     */
-    size() {
-        return this.cache.size;
-    }
-
-    /**
-     * Preloads images for the indices determined by the controllers. Prevents concurrent calls.
-     * If images are already cached or invalid, it skips them.
-     * Uses createImageBitmap for efficient off-main-thread decoding.
-     * Implements concurrency control to limit simultaneous fetches.
+     * Preloads images for upcoming frames based on the buffer size.
+     * Utilizes concurrency control to limit simultaneous fetches.
+     * Ensures that images are loaded in advance to prevent rendering delays.
      */
     async preloadImages() {
-        if (this.isPreloading) return; // Avoid races and overlapping loads
+        if (this.isPreloading) return; // Prevent overlapping preloads
         this.isPreloading = true;
 
-        console.log('Starting image preloading...');
+        //console.log('Starting image preloading...');
 
         try {
-            const bufferSize = BUFFER_SIZE;
-            const indices = this.indexController.getPreloadIndices(bufferSize);
-            const preloadInfos = this.folderController.getPreloadInfo(indices);
+            const bufferSize = this.bufferSize;
+            const currentFrame = this.indexController.getCurrentFrameNumber();
+            const preloadFrames = this.getPreloadFrames(currentFrame, bufferSize);
 
-            // Filter out preloadInfos that are already cached or invalid
-            const validPreloadInfos = preloadInfos.filter(preloadInfo => {
-                const { index, main_folder, float_folder } = preloadInfo;
-                const fgFolder = this.mainFolders[main_folder];
-                const bgFolder = this.floatFolders[float_folder];
+            // Filter out frames that are already cached or invalid
+            const validPreloadFrames = preloadFrames.filter(frameNumber => {
+                if (this.has(frameNumber)) return false; // Already cached
 
-                // Validate folders
-                if (!fgFolder || !Array.isArray(fgFolder.image_list) || fgFolder.image_list.length === 0) {
-                    console.warn(`Invalid or empty main folder: ${main_folder}`);
+                // Get file paths for the frame
+                const filePaths = this.folderController.getFilePaths(frameNumber);
+                if (!filePaths.mainImage || !filePaths.floatImage) {
+                    console.warn(`Invalid file paths for frame: ${frameNumber}`);
                     return false;
                 }
-                if (!bgFolder || !Array.isArray(bgFolder.image_list) || bgFolder.image_list.length === 0) {
-                    console.warn(`Invalid or empty float folder: ${float_folder}`);
-                    return false;
-                }
-
-                // Clamp index within valid range
-                const maxIndex = fgFolder.image_list.length - 1;
-                const clampedIndex = Math.max(0, Math.min(index, maxIndex));
-
-                // Skip if already cached
-                if (this.has(clampedIndex)) return false;
 
                 return true;
             });
 
-            console.log(`Preloading ${validPreloadInfos.length} images...`);
+            //console.log(`Preloading ${validPreloadFrames.length} frames...`);
 
             // Implement concurrency control
             const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
-            const preloadQueue = [...validPreloadInfos];
+            const preloadQueue = [...validPreloadFrames];
             let activePromises = [];
 
             while (preloadQueue.length > 0 || activePromises.length > 0) {
                 while (activePromises.length < concurrencyLimit && preloadQueue.length > 0) {
-                    const preloadInfo = preloadQueue.shift();
-                    const promise = this.loadAndCacheImage(preloadInfo);
+                    const frameNumber = preloadQueue.shift();
+                    const promise = this.loadAndCacheFrame(frameNumber);
                     activePromises.push(promise);
 
                     // Remove resolved promises from activePromises
@@ -167,7 +146,7 @@ export class ImageCache {
                 }
             }
 
-            console.log('Image preloading completed.');
+            //console.log('Image preloading completed.');
         } catch (error) {
             console.error('Error during image preloading:', error);
         } finally {
@@ -176,46 +155,79 @@ export class ImageCache {
     }
 
     /**
-     * Loads and caches images based on preloadInfo.
-     * @param {object} preloadInfo - Contains index, main_folder, and float_folder.
+     * Determines which frames to preload based on the current frame and buffer size.
+     * Only preloads upcoming frames.
+     * @param {number} currentFrame - The current frame number.
+     * @param {number} bufferSize - The size of the buffer.
+     * @returns {Array<number>} An array of frame numbers to preload.
      */
-    async loadAndCacheImage(preloadInfo) {
-        const { index, main_folder, float_folder } = preloadInfo;
+    getPreloadFrames(currentFrame, bufferSize) {
+        const preloadFrames = [];
 
-        const fgFolder = this.mainFolders[main_folder];
-        const bgFolder = this.floatFolders[float_folder];
-        const maxIndex = fgFolder.image_list.length - 1;
+        for (let i = 1; i <= bufferSize; i++) {
+            const nextFrame = currentFrame + i;
+            preloadFrames.push(nextFrame);
+        }
 
-        // Clamp index within valid range
-        const clampedIndex = Math.max(0, Math.min(index, maxIndex));
+        return preloadFrames;
+    }
 
-        const fgImages = fgFolder.image_list;
-        const bgImages = bgFolder.image_list;
-        const fgIndex = clampedIndex % fgImages.length;
-        const bgIndex = clampedIndex % bgImages.length;
-        const fgPath = fgImages[fgIndex];
-        const bgPath = bgImages[bgIndex];
+    /**
+     * Loads and caches images for a specific frame number.
+     * @param {number} frameNumber - The frame number to load.
+     */
+    async loadAndCacheFrame(frameNumber) {
+        const filePaths = this.folderController.getFilePaths(frameNumber);
+        const { mainImage, floatImage } = filePaths;
 
-        if (!fgPath || !bgPath) {
-            console.warn(`Missing image paths for index: ${clampedIndex}`);
+        if (!mainImage || !floatImage) {
+            console.warn(`Missing image paths for frame: ${frameNumber}`);
             return;
         }
 
         try {
             // Decode both images off-main-thread
             const [fgImg, bgImg] = await Promise.all([
-                loadImageBitmap(fgPath),
-                loadImageBitmap(bgPath)
+                loadImageBitmap(mainImage),
+                loadImageBitmap(floatImage)
             ]);
 
             if (fgImg && bgImg) {
-                this.set(clampedIndex, { fgImg, bgImg });
-                console.log(`Preloaded images at index: ${clampedIndex}`);
+                this.set(frameNumber, { fgImg, bgImg });
+                console.log(`Preloaded images for frame: ${frameNumber}`);
             } else {
-                console.warn(`Skipping preload for invalid images at index: ${clampedIndex}`);
+                console.warn(`Skipping preload for invalid images at frame: ${frameNumber}`);
             }
         } catch (imageError) {
-            console.warn(`Error loading images at index ${clampedIndex}:`, imageError);
+            console.warn(`Error loading images for frame ${frameNumber}:`, imageError);
+        }
+    }
+
+    /**
+     * Trims the cache to remove frames that are no longer needed.
+     * Since it's a flipbook, frames behind the current frame are not needed.
+     */
+    trimCache() {
+        const currentFrame = this.indexController.getCurrentFrameNumber();
+        const bufferSize = this.bufferSize;
+
+        // Define the minimum frame that should be kept in the cache
+        const minFrame = currentFrame;
+
+        // Remove any frames less than minFrame
+        for (const frameNumber of this.cache.keys()) {
+            if (frameNumber < minFrame) {
+                this.cache.delete(frameNumber);
+                console.log(`Trimmed frame ${frameNumber} from cache.`);
+            }
+        }
+
+        // Ensure buffer does not exceed bufferSize
+        while (this.cache.size > bufferSize) {
+            // Find the smallest frame number in the cache
+            const smallestFrame = Math.min(...this.cache.keys());
+            this.cache.delete(smallestFrame);
+            console.log(`Trimmed frame ${smallestFrame} from cache to maintain buffer size.`);
         }
     }
 }

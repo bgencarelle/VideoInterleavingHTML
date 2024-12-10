@@ -1,25 +1,17 @@
 // js/animation.js
 
-import {
-    FPS,
-    FRAME_DURATION,
-    BUFFER_SIZE,
-    MAX_CONCURRENT_FETCHES,
-} from './config.js';
+import { FRAME_DURATION } from './config.js';
 import { renderImages } from './canvas.js';
-import { IndexController } from './indexController.js';
-import { FolderController } from './folderController.js';
-import { drawOverlayText, calculateFPS } from './utils.js';
-import { ImageCache } from './imageCache.js';
+import { calculateFPS } from './utils.js';
 
 /**
- * Factory function to create the render loop.
- * @param {object} state - The state object containing necessary properties.
+ * Creates the render loop that updates and renders images based on the current frame number.
+ * @param {IndexController} indexController - The IndexController instance.
+ * @param {ImageCache} imageCache - The ImageCache instance.
  * @returns {function} The render loop function.
  */
-function createRenderLoop(state) {
+function createRenderLoop(indexController, imageCache) {
     let lastFrameTime = performance.now();
-    state.indexController.startTime = lastFrameTime; // Initialize startTime
 
     return function renderLoop(timestamp) {
         try {
@@ -27,32 +19,26 @@ function createRenderLoop(state) {
             const elapsed = timestamp - lastFrameTime;
             lastFrameTime = timestamp;
 
-            const { fps, frameTimes } = calculateFPS(state.frameTimes, FPS, elapsed);
-            state.fps = fps;
-            state.frameTimes = frameTimes;
+            // Calculate FPS
+            const { fps, frameTimes } = calculateFPS(indexController.frameTimes, FRAME_DURATION, elapsed);
+            indexController.fps = fps;
+            indexController.frameTimes = frameTimes;
 
-            // Update the index based on current timestamp
-            state.indexController.update(timestamp, state.maxIndex);
+            // Update the frame number based on current timestamp
+            indexController.update(timestamp);
 
-            const overallIndex = state.indexController.index;
-            const currentDirection = state.indexController.direction;
+            const currentFrameNumber = indexController.getCurrentFrameNumber();
 
-            if (state.imageCache.has(overallIndex)) {
-                const { fgImg, bgImg } = state.imageCache.get(overallIndex);
+            // Fetch the latest image from the buffer
+            const imagePair = imageCache.get(currentFrameNumber);
+
+            if (imagePair) {
+                const { fgImg, bgImg } = imagePair;
 
                 // Render images
                 renderImages(fgImg, bgImg);
-
-                // Update folders based on current index and direction
-                state.folderController.updateFolders(overallIndex, currentDirection);
             } else {
-                console.warn(`Image at index ${overallIndex} not in cache.`);
-                state.needsPreloading = true; // Trigger preloading if image is missing
-            }
-
-            // Schedule buffer preloading if cache size is below BUFFER_SIZE / 2
-            if (state.imageCache.size() < BUFFER_SIZE / 2) {
-                state.needsPreloading = true;
+                console.warn(`No image available for frame ${currentFrameNumber}`);
             }
         } catch (error) {
             console.error('Error in renderLoop:', error);
@@ -63,144 +49,49 @@ function createRenderLoop(state) {
 }
 
 /**
- * Starts the preloading loop to continuously check and preload images.
- * @param {object} state - The state object containing necessary properties.
+ * Starts the animation by initiating the render loop.
+ * @param {IndexController} indexController - The IndexController instance.
+ * @param {ImageCache} imageCache - The ImageCache instance.
  */
-function startPreloadingLoop(state) {
-    if (state.preloadingLoopRunning) return; // Prevent multiple loops
-    state.preloadingLoopRunning = true;
-
-    async function preloadingLoop() {
-        try {
-            if (state.needsPreloading) {
-                console.log('Preloading needed. Starting preloading...');
-                state.needsPreloading = false; // Reset the flag
-                await state.imageCache.preloadImages(); // Preload based on current direction and index
-            }
-        } catch (error) {
-            console.error('Error in preloadingLoop:', error);
-        } finally {
-            // Schedule the next check
-            setTimeout(preloadingLoop, 50); // Adjust the interval as needed
-        }
-    }
-    preloadingLoop();
-}
-
-/**
- * Starts the animation by initializing necessary components and starting loops.
- */
-export async function startAnimation() {
-    const state = startAnimation.state;
-
-    if (state.renderLoopStarted) return;
-    state.renderLoopStarted = true;
-
-    // Initialize IndexController
-    state.maxIndex = state.folderController.getMaxIndex();
-    state.indexController.setIndex(0, state.maxIndex);
-    state.indexController.setDirection(1);
-
-    // Clear the cache before starting
-    state.imageCache.clear();
-
-    // Preload Initial Images
-    await state.imageCache.preloadImages(); // Preload based on initial direction
-
-    // Start the Preloading Loop
-    startPreloadingLoop(state);
+export function startAnimation(indexController, imageCache) {
+    if (startAnimation.renderLoopStarted) return;
+    startAnimation.renderLoopStarted = true;
 
     // Start the Rendering Loop
-    const renderLoop = createRenderLoop(state);
+    const renderLoop = createRenderLoop(indexController, imageCache);
     requestAnimationFrame(renderLoop);
 }
 
 /**
- * Initializes folders and loads data into the animation state.
- * @param {object} mainData - The main folder data.
- * @param {object} floatData - The float folder data.
+ * Initializes the animation by setting up controllers and ensuring readiness.
+ * Note: Buffer handling is completely removed from this function.
+ * @param {Object} mainData - The main folder data.
+ * @param {Object} floatData - The float folder data.
+ * @param {IndexController} indexController - The IndexController instance.
+ * @param {FolderController} folderController - The FolderController instance.
+ * @param {ImageCache} imageCache - The ImageCache instance.
  * @returns {boolean} Returns true if initialization is successful, false otherwise.
  */
-export async function initializeAnimation(mainData, floatData) {
-    // Encapsulate index and folder related globals within a state object
+export async function initializeAnimation(mainData, floatData, indexController, folderController, imageCache) {
     const state = {
-        indexController: null,
-        folderController: null,
-        mainFolders: [],
-        floatFolders: [],
-        frameTimes: [],
-        fps: 0,
-        needsPreloading: false,
-        renderLoopStarted: false,
-        preloadingLoopRunning: false, // New flag for preloading loop
-        imageCache: null, // Will be initialized below
-        maxIndex: 0,
+        indexController: indexController,
+        folderController: folderController,
+        imageCache: imageCache,
+        maxIndex: folderController.getMaxIndex(),
     };
 
-    // Assign state to startAnimation for access in startAnimation
-    startAnimation.state = state;
+    // Initialize IndexController with maxIndex
+    indexController.initialize(state.maxIndex);
 
-    state.mainFolders = mainData.folders;
-    state.floatFolders = floatData.folders;
-
-    // Check if folders are empty
-    if (state.mainFolders.length === 0 || state.floatFolders.length === 0) {
-        console.error('No folders found in one or both JSON files.');
-        return false;
-    }
-
-    // Verify that each folder has an image_list
-    for (let idx = 0; idx < state.mainFolders.length; idx++) {
-        const folder = state.mainFolders[idx];
-        if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
-            console.error(`Folder ${idx} in mainFolders is missing a valid 'image_list' array.`);
-            return false;
-        }
-    }
-
-    for (let idx = 0; idx < state.floatFolders.length; idx++) {
-        const folder = state.floatFolders[idx];
-        if (!folder.image_list || !Array.isArray(folder.image_list) || folder.image_list.length === 0) {
-            console.error(`Folder ${idx} in floatFolders is missing a valid 'image_list' array.`);
-            return false;
-        }
-    }
-
-    // Create FolderController
-    state.folderController = new FolderController(state.mainFolders, state.floatFolders);
-
-    // Create IndexController
-    state.indexController = new IndexController();
-
-    // Initialize the image cache with the specified BUFFER_SIZE and options
-    state.imageCache = new ImageCache(BUFFER_SIZE, {
-        indexController: state.indexController,
-        folderController: state.folderController,
-        mainFolders: state.mainFolders,
-        floatFolders: state.floatFolders,
-    });
-
-    // Subscribe to folder changes
-    state.folderController.onFolderChange((event) => {
+    // Subscribe to folder changes if needed (optional)
+    folderController.onFolderChange((event) => {
         if (event.folderChanged) {
-            // Folders changed, set flag to initiate preloading
-            state.needsPreloading = true;
-            console.log('Folder changed. Needs preloading.');
+            console.log('Folder changed. ImageCache should handle preloading.');
+            // ImageCache can handle preloading based on folder changes
+            //imageCache.preloadImages(); // Trigger preloading when folders change
         }
     });
 
-    // Subscribe to index changes, particularly direction changes
-    state.indexController.onIndexChange((newIndex, direction, event) => {
-        if (event.directionChanged) {
-            // Direction changed, clear the cache
-            state.imageCache.clear();
-            console.log('Direction changed. Cache cleared.');
-
-            // Set flag to initiate preloading based on new direction
-            state.needsPreloading = true;
-        }
-    });
-
-    console.log('Folders initialized successfully.');
+    console.log('Animation initialized successfully.');
     return true;
 }

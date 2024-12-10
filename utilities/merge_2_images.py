@@ -20,6 +20,7 @@ files_b = sorted(glob.glob(os.path.join(folder_b, '*.webp')))
 # Ensure both folders have the same number of images
 assert len(files_a) == len(files_b), "Folders don't have the same number of images"
 
+# noinspection SpellCheckingInspection
 for idx in range(len(files_a)):
     # Read images
     img_a = webp.imread(files_a[idx])
