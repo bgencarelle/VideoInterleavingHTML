@@ -175,7 +175,7 @@ cython_debug/
 
 .idea/
 # Project exclude paths
-/generated_img_lists/!/server.log
+.generated_img_lists/!/server.log
 *.old
 /node_modules/
 /generated_img_lists/
@@ -183,4 +183,5 @@ cython_debug/
 /dist/*
 */generated_img_lists/
 /folders_processed/*
-/folders_processed/
+.folders_processed/
+
