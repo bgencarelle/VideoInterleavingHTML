@@ -1,15 +1,13 @@
 // js/main.js
 
-//import { initializeCanvas, canvas } from './canvas.js';
 import { initializeWebGL, canvas } from './webgl.js';
-
-import { initializeAnimation, startAnimation } from './animation.js';
+import { startAnimation } from './animation.js';
 import { MAIN_IMAGES_JSON, FLOAT_IMAGES_JSON, BUFFER_SIZE } from './config.js';
 import { ImageCache } from './imageCache.js';
 import { IndexController } from './indexController.js';
 import { FolderController } from './folderController.js';
 
-const PRELOAD_THRESHOLD = 15; // When buffer has less than 10 frames remaining, preload more
+const PRELOAD_THRESHOLD = 15; // When buffer has less than 15 frames remaining, preload more
 
 // Preloaded JSON data
 let preloadedData = {};
@@ -52,9 +50,9 @@ export function fetchPreloadedJSON(type) {
     }
 }
 
-// Initialize canvas
-//initializeCanvas();
+// Initialize WebGL
 initializeWebGL();
+
 /**
  * Toggles fullscreen mode for the canvas when clicked.
  */
@@ -71,7 +69,7 @@ canvas.addEventListener('click', () => {
 });
 
 /**
- * Initializes and starts the animation.
+ * Initializes and starts the application.
  */
 (async function initializeApp() {
     try {
@@ -124,17 +122,11 @@ canvas.addEventListener('click', () => {
             }
         });
 
-        // Initialize Animation with controllers and cache
-        const success = await initializeAnimation(mainData, floatData, indexController, folderController, imageCache);
-        console.log('Initialization success:', success);
+        // Initialize ImageCache by preloading initial images
+        await imageCache.preloadImages();
 
-        if (success) {
-            // Preload Initial Images
-            await imageCache.preloadImages();
-
-            // Start the animation
-            startAnimation(indexController, imageCache);
-        }
+        // Start the animation
+        startAnimation(indexController, imageCache);
     } catch (error) {
         console.error('Error during initialization:', error);
     }

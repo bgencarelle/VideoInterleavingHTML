@@ -1,5 +1,5 @@
 // js/imageCache.js
-import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES } from './config.js';
+import {MAX_CONCURRENT_FETCHES } from './config.js';
 
 /**
  * Loads and decodes an image off the main thread using createImageBitmap.

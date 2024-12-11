@@ -1,9 +1,7 @@
 // js/animation.js
 
 import { FRAME_DURATION } from './config.js';
-//import { renderImages } from './canvas.js';
 import { renderImages } from './webgl.js';
-
 import { calculateFPS } from './utils.js';
 
 /**
@@ -62,38 +60,4 @@ export function startAnimation(indexController, imageCache) {
     // Start the Rendering Loop
     const renderLoop = createRenderLoop(indexController, imageCache);
     requestAnimationFrame(renderLoop);
-}
-
-/**
- * Initializes the animation by setting up controllers and ensuring readiness.
- * Note: Buffer handling is completely removed from this function.
- * @param {Object} mainData - The main folder data.
- * @param {Object} floatData - The float folder data.
- * @param {IndexController} indexController - The IndexController instance.
- * @param {FolderController} folderController - The FolderController instance.
- * @param {ImageCache} imageCache - The ImageCache instance.
- * @returns {boolean} Returns true if initialization is successful, false otherwise.
- */
-export async function initializeAnimation(mainData, floatData, indexController, folderController, imageCache) {
-    const state = {
-        indexController: indexController,
-        folderController: folderController,
-        imageCache: imageCache,
-        maxIndex: folderController.getMaxIndex(),
-    };
-
-    // Initialize IndexController with maxIndex
-    indexController.initialize(state.maxIndex);
-
-    // Subscribe to folder changes if needed (optional)
-    folderController.onFolderChange((event) => {
-        if (event.folderChanged) {
-            //console.log('Folder changed. ImageCache should handle preloading.');
-            // ImageCache can handle preloading based on folder changes
-            //imageCache.preloadImages(); // Trigger preloading when folders change
-        }
-    });
-
-    console.log('Animation initialized successfully.');
-    return true;
 }
