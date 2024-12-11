@@ -30,7 +30,7 @@ export class IndexController {
      */
     initialize(maxIndex) {
         this.cycleLength = PINGPONG_MODE ? maxIndex * 2 : maxIndex;
-        console.log(`IndexController initialized with cycleLength: ${this.cycleLength}`);
+        //console.log(`IndexController initialized with cycleLength: ${this.cycleLength}`);
     }
 
     /**
@@ -39,7 +39,7 @@ export class IndexController {
      */
     update(currentTimestamp) {
         const elapsedTime = currentTimestamp - this.startTime;
-        const totalFrames = Math.floor(elapsedTime / this.frameDuration)
+        const totalFrames = Math.floor(elapsedTime / this.frameDuration);
 
 
         // Calculate frameNumber based on PingPong mode
@@ -47,13 +47,12 @@ export class IndexController {
             ? totalFrames % this.cycleLength
             : totalFrames % (this.cycleLength + 1); // +1 to include maxIndex
 
-            console.log(`TOTAL FRAMES: ${totalFrames}`); // Added logging
         // Determine if frameNumber has changed
         if (this.frameNumber !== frameNumber) {
             this.frameNumber = frameNumber;
             this.logIPS(); // Log IPS during frame update
             this.notifyListeners({ frameChanged: true });
-            console.log(`Frame updated to: ${this.frameNumber}`); // Added logging
+            //console.log(`Frame updated to: ${this.frameNumber}`); // Added logging
         }
     }
 
@@ -95,7 +94,7 @@ export class IndexController {
         const ips = (this.frameTimes.length / totalElapsed) * 1000; // Convert to changes per second
 
         if (ips !== this.lastLoggedIPS) {
-            console.log(`Frame IPS: ${ips.toFixed(2)}, frameNumber: ${this.frameNumber}`);
+            //console.log(`Frame IPS: ${ips.toFixed(2)}, frameNumber: ${this.frameNumber}`);
             this.lastLoggedIPS = ips; // Update the last logged value
         }
     }

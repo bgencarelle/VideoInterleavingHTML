@@ -41,33 +41,30 @@ export class ImageCache {
      * @param {FolderController} options.folderController - The FolderController instance.
      * @param {Array<Object>} options.mainFolders - Array of main folder objects.
      * @param {Array<Object>} options.floatFolders - Array of float folder objects.
+     * @param {number} options.cycleLength - The total number of frames in a cycle.
      */
     constructor(bufferSize, options = {}) {
         this.bufferSize = bufferSize;
         this.cache = new Map(); // Map<frameNumber, { fgImg, bgImg }>
+        this.cycleLength = options.cycleLength || 1; // Use provided cycleLength
         this.indexController = options.indexController;
         this.folderController = options.folderController;
         this.mainFolders = options.mainFolders;
         this.floatFolders = options.floatFolders;
         this.isPreloading = false; // Prevent concurrent preloads
 
-        // Track the highest frame number preloaded
-        this.highestPreloadedFrame = -1;
+        // Queue to manage preload order
+        this.preloadQueue = [];
     }
 
     /**
-     * Stores an image pair in the cache. If the cache exceeds the buffer size, removes the oldest entry.
+     * Stores an image pair in the cache.
      * @param {number} frameNumber - The frame number for the cached images.
      * @param {object} item - The { fgImg, bgImg } object, both are ImageBitmaps.
      */
     set(frameNumber, item) {
         this.cache.set(frameNumber, item);
-        //console.log(`Cached images at frame: ${frameNumber}`);
-
-        // Update the highest preloaded frame
-        if (frameNumber > this.highestPreloadedFrame) {
-            this.highestPreloadedFrame = frameNumber;
-        }
+        // console.log(`Cached images at frame: ${frameNumber}`);
 
         // Trim the cache to maintain buffer size
         this.trimCache();
@@ -92,6 +89,22 @@ export class ImageCache {
     }
 
     /**
+     * Calculates how many frames are remaining in the buffer relative to the current frame.
+     * @param {number} currentFrame - The current frame number.
+     * @returns {number} Number of frames remaining in the buffer.
+     */
+    getFramesRemaining(currentFrame) {
+        let remaining = 0;
+        for (let i = 1; i <= this.bufferSize; i++) {
+            const nextFrame = (currentFrame + i) % this.cycleLength;
+            if (this.has(nextFrame)) {
+                remaining++;
+            }
+        }
+        return remaining;
+    }
+
+    /**
      * Preloads images for upcoming frames based on the buffer size.
      * Utilizes concurrency control to limit simultaneous fetches.
      * Ensures that images are loaded in advance to prevent rendering delays.
@@ -100,37 +113,25 @@ export class ImageCache {
         if (this.isPreloading) return; // Prevent overlapping preloads
         this.isPreloading = true;
 
-        //console.log('Starting image preloading...');
-
         try {
             const bufferSize = this.bufferSize;
             const currentFrame = this.indexController.getCurrentFrameNumber();
             const preloadFrames = this.getPreloadFrames(currentFrame, bufferSize);
 
-            // Filter out frames that are already cached or invalid
-            const validPreloadFrames = preloadFrames.filter(frameNumber => {
-                if (this.has(frameNumber)) return false; // Already cached
+            // Determine which frames need to be preloaded
+            const framesToPreload = preloadFrames.filter(frameNumber => !this.has(frameNumber));
 
-                // Get file paths for the frame
-                const filePaths = this.folderController.getFilePaths(frameNumber);
-                if (!filePaths.mainImage || !filePaths.floatImage) {
-                    console.warn(`Invalid file paths for frame: ${frameNumber}`);
-                    return false;
-                }
-
-                return true;
-            });
-
-            //console.log(`Preloading ${validPreloadFrames.length} frames...`);
+            // Add frames to the preload queue
+            this.preloadQueue.push(...framesToPreload);
 
             // Implement concurrency control
             const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
-            const preloadQueue = [...validPreloadFrames];
             let activePromises = [];
 
-            while (preloadQueue.length > 0 || activePromises.length > 0) {
-                while (activePromises.length < concurrencyLimit && preloadQueue.length > 0) {
-                    const frameNumber = preloadQueue.shift();
+            while (this.preloadQueue.length > 0 || activePromises.length > 0) {
+                // Start new preload tasks up to the concurrency limit
+                while (activePromises.length < concurrencyLimit && this.preloadQueue.length > 0) {
+                    const frameNumber = this.preloadQueue.shift();
                     const promise = this.loadAndCacheFrame(frameNumber);
                     activePromises.push(promise);
 
@@ -145,8 +146,6 @@ export class ImageCache {
                     await Promise.race(activePromises);
                 }
             }
-
-            //console.log('Image preloading completed.');
         } catch (error) {
             console.error('Error during image preloading:', error);
         } finally {
@@ -165,7 +164,7 @@ export class ImageCache {
         const preloadFrames = [];
 
         for (let i = 1; i <= bufferSize; i++) {
-            const nextFrame = currentFrame + i;
+            const nextFrame = (currentFrame + i) % this.cycleLength;
             preloadFrames.push(nextFrame);
         }
 
@@ -194,7 +193,7 @@ export class ImageCache {
 
             if (fgImg && bgImg) {
                 this.set(frameNumber, { fgImg, bgImg });
-                console.log(`Preloaded images for frame: ${frameNumber}`);
+                //console.log(`Preloaded images for frame: ${frameNumber}`);
             } else {
                 console.warn(`Skipping preload for invalid images at frame: ${frameNumber}`);
             }
@@ -205,29 +204,36 @@ export class ImageCache {
 
     /**
      * Trims the cache to remove frames that are no longer needed.
-     * Since it's a flipbook, frames behind the current frame are not needed.
+     * Ensures that only the required frames within the buffer are kept.
      */
     trimCache() {
         const currentFrame = this.indexController.getCurrentFrameNumber();
         const bufferSize = this.bufferSize;
 
-        // Define the minimum frame that should be kept in the cache
-        const minFrame = currentFrame;
+        // Define the range of frames to keep
+        const validFrames = new Set();
+        for (let i = 0; i < bufferSize; i++) {
+            const frame = (currentFrame + i) % this.cycleLength;
+            validFrames.add(frame);
+        }
 
-        // Remove any frames less than minFrame
+        // Also include the current frame to ensure it's always available
+        validFrames.add(currentFrame);
+
+        // Iterate through cached frames and delete those not in validFrames
         for (const frameNumber of this.cache.keys()) {
-            if (frameNumber < minFrame) {
+            if (!validFrames.has(frameNumber)) {
                 this.cache.delete(frameNumber);
-                console.log(`Trimmed frame ${frameNumber} from cache.`);
+                //console.log(`Trimmed frame ${frameNumber} from cache.`);
             }
         }
 
-        // Ensure buffer does not exceed bufferSize
-        while (this.cache.size > bufferSize) {
+        // Ensure buffer does not exceed bufferSize + 1 (current frame)
+        while (this.cache.size > bufferSize + 1) {
             // Find the smallest frame number in the cache
             const smallestFrame = Math.min(...this.cache.keys());
             this.cache.delete(smallestFrame);
-            console.log(`Trimmed frame ${smallestFrame} from cache to maintain buffer size.`);
+            //console.log(`Trimmed frame ${smallestFrame} from cache to maintain buffer size.`);
         }
     }
 }

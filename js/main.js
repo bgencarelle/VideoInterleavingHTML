@@ -1,13 +1,15 @@
 // js/main.js
 
-import { initializeCanvas, canvas } from './canvas.js';
+//import { initializeCanvas, canvas } from './canvas.js';
+import { initializeWebGL, canvas } from './webgl.js';
+
 import { initializeAnimation, startAnimation } from './animation.js';
-import { MAIN_IMAGES_JSON, FLOAT_IMAGES_JSON, BUFFER_SIZE } from './config.js'; // Removed PINGPONG_MODE
+import { MAIN_IMAGES_JSON, FLOAT_IMAGES_JSON, BUFFER_SIZE } from './config.js';
 import { ImageCache } from './imageCache.js';
 import { IndexController } from './indexController.js';
 import { FolderController } from './folderController.js';
 
-const PRELOAD_THRESHOLD = 10; // When buffer has less than 10 frames remaining, preload more
+const PRELOAD_THRESHOLD = 15; // When buffer has less than 10 frames remaining, preload more
 
 // Preloaded JSON data
 let preloadedData = {};
@@ -51,8 +53,8 @@ export function fetchPreloadedJSON(type) {
 }
 
 // Initialize canvas
-initializeCanvas();
-
+//initializeCanvas();
+initializeWebGL();
 /**
  * Toggles fullscreen mode for the canvas when clicked.
  */
@@ -89,8 +91,12 @@ canvas.addEventListener('click', () => {
         indexController.initialize(maxIndex);
         console.log(`IndexController initialized with cycleLength: ${indexController.cycleLength}`);
 
-        // Initialize ImageCache
+        // Retrieve cycleLength from IndexController
+        const cycleLength = indexController.cycleLength;
+
+        // Initialize ImageCache with cycleLength for wrap-around
         const imageCache = new ImageCache(BUFFER_SIZE, {
+            cycleLength: cycleLength,
             indexController: indexController,
             folderController: folderController,
             mainFolders: mainData.folders,
@@ -100,7 +106,7 @@ canvas.addEventListener('click', () => {
         // Subscribe to folder changes to trigger preloading
         folderController.onFolderChange((event) => {
             if (event.folderChanged) {
-                console.log('Folder changed. Triggering preloading.');
+                //console.log('Folder changed. Triggering preloading.');
                 imageCache.preloadImages();
             }
         });
@@ -108,15 +114,12 @@ canvas.addEventListener('click', () => {
         // Subscribe to frame changes to trigger preloading when buffer is low
         indexController.onFrameChange((frameNumber) => {
             const currentFrame = frameNumber;
-            const highestPreloaded = imageCache.highestPreloadedFrame;
+            const framesRemaining = imageCache.getFramesRemaining(currentFrame);
 
-            // Calculate how many frames are remaining in the buffer
-            const framesRemaining = highestPreloaded - currentFrame;
-
-            console.log(`Frames remaining in buffer: ${framesRemaining}`);
+            //console.log(`Frames remaining in buffer: ${framesRemaining}`);
 
             if (framesRemaining < PRELOAD_THRESHOLD) {
-                console.log('Buffer running low. Triggering preloading.');
+                //console.log('Buffer running low. Triggering preloading.');
                 imageCache.preloadImages();
             }
         });

@@ -1,7 +1,9 @@
 // js/animation.js
 
 import { FRAME_DURATION } from './config.js';
-import { renderImages } from './canvas.js';
+//import { renderImages } from './canvas.js';
+import { renderImages } from './webgl.js';
+
 import { calculateFPS } from './utils.js';
 
 /**
@@ -86,7 +88,7 @@ export async function initializeAnimation(mainData, floatData, indexController, 
     // Subscribe to folder changes if needed (optional)
     folderController.onFolderChange((event) => {
         if (event.folderChanged) {
-            console.log('Folder changed. ImageCache should handle preloading.');
+            //console.log('Folder changed. ImageCache should handle preloading.');
             // ImageCache can handle preloading based on folder changes
             //imageCache.preloadImages(); // Trigger preloading when folders change
         }
