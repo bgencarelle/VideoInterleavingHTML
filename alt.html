@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-webgl="unsupported">
 
 <head>
     <meta charset="UTF-8">
@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="./css/styles.css">
 
     <!-- Preload critical assets -->
-    <link rel="preload" href="./js/main.js" as="fetch">
+    <link rel="preload" href="./js/main.js" as="script">
 </head>
 
 <body>
@@ -18,6 +18,11 @@
     <canvas id="displayCanvas" aria-label="Image Viewer Canvas">
         Your browser does not support WebGL. Please update your browser or enable WebGL support.
     </canvas>
+
+    <!-- Fallback content for non-WebGL environments -->
+    <div class="no-webgl-message">
+        <p>WebGL is not supported in your browser. Please update your browser or enable WebGL support to view this content.</p>
+    </div>
 
     <!-- Link to your JavaScript file -->
     <script type="module" src="./js/main.js"></script>

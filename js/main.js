@@ -50,8 +50,67 @@ export function fetchPreloadedJSON(type) {
     }
 }
 
-// Initialize WebGL
-initializeWebGL();
+/**
+ * Function to detect WebGL support.
+ * @returns {boolean} - True if WebGL is supported, false otherwise.
+ */
+function isWebGLSupported() {
+    try {
+        const testCanvas = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext &&
+            (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')));
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Display "WE" if WebGL is not supported.
+ */
+function handleWebGLUnsupported() {
+    const displayCanvas = document.getElementById('displayCanvas');
+    // Modify the canvas to display "WE"
+    displayCanvas.innerHTML = 'WE';
+    // Style the canvas to ensure "WE" is visible
+    displayCanvas.style.display = 'flex';
+    displayCanvas.style.justifyContent = 'center';
+    displayCanvas.style.alignItems = 'center';
+    displayCanvas.style.color = '#FFFFFF';
+    displayCanvas.style.fontSize = '2rem';
+    displayCanvas.style.backgroundColor = '#000';
+}
+
+/**
+ * Initialize WebGL and set data attribute.
+ * If unsupported, display "WE" and halt initialization.
+ * @returns {boolean} - True if WebGL is supported and initialized, false otherwise.
+ */
+function initializeWebGLSupport() {
+    const htmlElement = document.documentElement;
+
+    if (isWebGLSupported()) {
+        try {
+            initializeWebGL();
+            htmlElement.setAttribute('data-webgl', 'supported');
+            return true;
+        } catch (e) {
+            console.error('WebGL initialization failed:', e);
+            handleWebGLUnsupported();
+            return false;
+        }
+    } else {
+        handleWebGLUnsupported();
+        return false;
+    }
+}
+
+// Initialize WebGL support
+if (!initializeWebGLSupport()) {
+    // WebGL is not supported; halt further execution
+    console.log('WebGL is not supported. Displaying fallback message.');
+    // Prevent further script execution by throwing an error
+    throw new Error('WebGL is not supported.');
+}
 
 /**
  * Toggles fullscreen mode for the canvas when clicked.
@@ -104,7 +163,6 @@ canvas.addEventListener('click', () => {
         // Subscribe to folder changes to trigger preloading
         folderController.onFolderChange((event) => {
             if (event.folderChanged) {
-                //console.log('Folder changed. Triggering preloading.');
                 imageCache.preloadImages();
             }
         });
@@ -114,10 +172,7 @@ canvas.addEventListener('click', () => {
             const currentFrame = frameNumber;
             const framesRemaining = imageCache.getFramesRemaining(currentFrame);
 
-            //console.log(`Frames remaining in buffer: ${framesRemaining}`);
-
             if (framesRemaining < PRELOAD_THRESHOLD) {
-                //console.log('Buffer running low. Triggering preloading.');
                 imageCache.preloadImages();
             }
         });

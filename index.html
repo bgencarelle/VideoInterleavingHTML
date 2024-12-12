@@ -1,22 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-webgl="unsupported">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fullscreen Image Viewer - WebGL</title>
 
-    <title>Fullscreen Image Viewer</title>
-    <!-- Link to the minified and bundled stylesheet -->
-    <link rel="stylesheet" href="./dist/styles.min.css">
+    <!-- Link to your CSS file -->
+    <link rel="stylesheet" href="./css/styles.css">
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="./js/main.js" as="script">
 </head>
 
 <body>
-    <h1> </h1>
-
     <!-- Canvas for rendering images -->
-    <canvas id="displayCanvas"></canvas>
-    <!-- JavaScript file (minified and bundled) -->
-    <script type="module" src="./dist/bundle.js"></script>
+    <canvas id="displayCanvas" aria-label="Image Viewer Canvas">
+        WE
+    </canvas>
+
+    <!-- Link to your JavaScript file -->
+    <script type="module" src="./js/main.js"></script>
 </body>
 
 </html>

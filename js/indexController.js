@@ -50,7 +50,7 @@ export class IndexController {
         // Determine if frameNumber has changed
         if (this.frameNumber !== frameNumber) {
             this.frameNumber = frameNumber;
-            this.logIPS(); // Log IPS during frame update
+            //this.logIPS(); // Log IPS during frame update
             this.notifyListeners({ frameChanged: true });
             //console.log(`Frame updated to: ${this.frameNumber}`); // Added logging
         }

@@ -1,31 +1,21 @@
 // js/imageCache.js
-import {MAX_CONCURRENT_FETCHES } from './config.js';
+import { MAX_CONCURRENT_FETCHES } from './config.js';
 
 /**
- * Loads and decodes an image off the main thread using createImageBitmap.
+ * Loads an image as an HTMLImageElement.
  * @param {string} path - The path to the image.
- * @returns {Promise<ImageBitmap|null>} A promise resolving to an ImageBitmap or null if failed.
+ * @returns {Promise<HTMLImageElement|null>} A promise resolving to an HTMLImageElement or null if failed.
  */
-async function loadImageBitmap(path) {
-    const encodedPath = encodeURI(path);
-    try {
-        const response = await fetch(encodedPath);
-        if (!response.ok) {
-            console.error(`Failed to fetch image: ${path}, status: ${response.status}`);
-            return null;
-        }
-        const blob = await response.blob();
-        try {
-            // createImageBitmap decodes off the main thread
-            return await createImageBitmap(blob);
-        } catch (decodeError) {
-            console.error(`Failed to decode image bitmap: ${path}`, decodeError);
-            return null;
-        }
-    } catch (networkError) {
-        console.error(`Network error while fetching image: ${path}`, networkError);
-        return null;
-    }
+function loadImage(path) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.src = path;
+        img.onload = () => resolve(img);
+        img.onerror = (error) => {
+            console.error(`Failed to load image: ${path}`, error);
+            resolve(null);
+        };
+    });
 }
 
 /**
@@ -60,7 +50,7 @@ export class ImageCache {
     /**
      * Stores an image pair in the cache.
      * @param {number} frameNumber - The frame number for the cached images.
-     * @param {object} item - The { fgImg, bgImg } object, both are ImageBitmaps.
+     * @param {object} item - The { fgImg, bgImg } object, both are HTMLImageElements.
      */
     set(frameNumber, item) {
         this.cache.set(frameNumber, item);
@@ -109,49 +99,38 @@ export class ImageCache {
      * Utilizes concurrency control to limit simultaneous fetches.
      * Ensures that images are loaded in advance to prevent rendering delays.
      */
-    async preloadImages() {
-        if (this.isPreloading) return; // Prevent overlapping preloads
-        this.isPreloading = true;
+async preloadImages() {
+    if (this.isPreloading) return;
+    this.isPreloading = true;
 
-        try {
-            const bufferSize = this.bufferSize;
-            const currentFrame = this.indexController.getCurrentFrameNumber();
-            const preloadFrames = this.getPreloadFrames(currentFrame, bufferSize);
+    try {
+        const bufferSize = this.bufferSize;
+        const currentFrame = this.indexController.getCurrentFrameNumber();
+        const preloadFrames = this.getPreloadFrames(currentFrame, bufferSize);
+        const framesToPreload = preloadFrames.filter(frameNumber => !this.has(frameNumber));
 
-            // Determine which frames need to be preloaded
-            const framesToPreload = preloadFrames.filter(frameNumber => !this.has(frameNumber));
+        const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
+        const queue = [...framesToPreload];
+        const workers = [];
 
-            // Add frames to the preload queue
-            this.preloadQueue.push(...framesToPreload);
-
-            // Implement concurrency control
-            const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
-            let activePromises = [];
-
-            while (this.preloadQueue.length > 0 || activePromises.length > 0) {
-                // Start new preload tasks up to the concurrency limit
-                while (activePromises.length < concurrencyLimit && this.preloadQueue.length > 0) {
-                    const frameNumber = this.preloadQueue.shift();
-                    const promise = this.loadAndCacheFrame(frameNumber);
-                    activePromises.push(promise);
-
-                    // Remove resolved promises from activePromises
-                    promise.finally(() => {
-                        activePromises = activePromises.filter(p => p !== promise);
-                    });
-                }
-
-                // Wait for any of the active promises to resolve before continuing
-                if (activePromises.length > 0) {
-                    await Promise.race(activePromises);
-                }
+        const worker = async () => {
+            while (queue.length > 0) {
+                const frameNumber = queue.shift();
+                await this.loadAndCacheFrame(frameNumber);
             }
-        } catch (error) {
-            console.error('Error during image preloading:', error);
-        } finally {
-            this.isPreloading = false;
+        };
+
+        for (let i = 0; i < concurrencyLimit; i++) {
+            workers.push(worker());
         }
+
+        await Promise.all(workers);
+    } catch (error) {
+        console.error('Error during image preloading:', error);
+    } finally {
+        this.isPreloading = false;
     }
+}
 
     /**
      * Determines which frames to preload based on the current frame and buffer size.
@@ -185,10 +164,10 @@ export class ImageCache {
         }
 
         try {
-            // Decode both images off-main-thread
+            // Load both images as HTMLImageElement
             const [fgImg, bgImg] = await Promise.all([
-                loadImageBitmap(mainImage),
-                loadImageBitmap(floatImage)
+                loadImage(mainImage),
+                loadImage(floatImage)
             ]);
 
             if (fgImg && bgImg) {
@@ -206,34 +185,18 @@ export class ImageCache {
      * Trims the cache to remove frames that are no longer needed.
      * Ensures that only the required frames within the buffer are kept.
      */
-    trimCache() {
-        const currentFrame = this.indexController.getCurrentFrameNumber();
-        const bufferSize = this.bufferSize;
+trimCache() {
+    const currentFrame = this.indexController.getCurrentFrameNumber();
+    const validFrames = new Set([
+        currentFrame,
+        ...this.getPreloadFrames(currentFrame, this.bufferSize)
+    ]);
 
-        // Define the range of frames to keep
-        const validFrames = new Set();
-        for (let i = 0; i < bufferSize; i++) {
-            const frame = (currentFrame + i) % this.cycleLength;
-            validFrames.add(frame);
-        }
-
-        // Also include the current frame to ensure it's always available
-        validFrames.add(currentFrame);
-
-        // Iterate through cached frames and delete those not in validFrames
-        for (const frameNumber of this.cache.keys()) {
-            if (!validFrames.has(frameNumber)) {
-                this.cache.delete(frameNumber);
-                //console.log(`Trimmed frame ${frameNumber} from cache.`);
-            }
-        }
-
-        // Ensure buffer does not exceed bufferSize + 1 (current frame)
-        while (this.cache.size > bufferSize + 1) {
-            // Find the smallest frame number in the cache
-            const smallestFrame = Math.min(...this.cache.keys());
-            this.cache.delete(smallestFrame);
-            //console.log(`Trimmed frame ${smallestFrame} from cache to maintain buffer size.`);
+    for (const frameNumber of this.cache.keys()) {
+        if (!validFrames.has(frameNumber)) {
+            this.cache.delete(frameNumber);
+            // Optionally, you can also nullify references to help garbage collection
         }
     }
+}
 }

@@ -91,7 +91,7 @@ function setupShaders() {
         void main() {
             vec4 bgColor = texture2D(u_bgImage, v_texCoord);
             vec4 fgColor = texture2D(u_fgImage, v_texCoord);
-            gl_FragColor = mix(bgColor, fgColor, fgColor.a); // Blend foreground over background
+            gl_FragColor = mix(fgColor, bgColor, bgColor.a); // Blend foreground over background
         }
     `;
 
@@ -177,10 +177,10 @@ function setupBuffers() {
     gl.bufferData(
         gl.ARRAY_BUFFER,
         new Float32Array([
-            0, 0,
-            1, 0,
             0, 1,
             1, 1,
+            0, 0,
+            1, 0,
         ]),
         gl.STATIC_DRAW
     );
@@ -199,7 +199,7 @@ function setupTextures() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);    // Linear filtering
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);    // Linear filtering
     // Initialize with a single blue pixel as a placeholder
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 255]));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 5, 255]));
 
     // Create background texture
     bgTexture = gl.createTexture();
@@ -210,7 +210,7 @@ function setupTextures() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);    // Linear filtering
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);    // Linear filtering
     // Initialize with a single blue pixel as a placeholder
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 255]));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 5, 255]));
 }
 
 /**
