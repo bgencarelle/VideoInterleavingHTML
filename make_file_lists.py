@@ -189,9 +189,7 @@ def process_files():
     processed_dir = script_dir / 'folders_processed'
     generated_dir = script_dir / 'generated_img_lists'
 
-    if not processed_dir.exists():
-        print("'folders_processed' directory not found. Running get_folders_list to generate it.")
-        get_folders_list.write_folder_list()
+    get_folders_list.write_folder_list()
 
     if not processed_dir.exists():
         print("Failed to create 'folders_processed' directory. Please check permissions.")

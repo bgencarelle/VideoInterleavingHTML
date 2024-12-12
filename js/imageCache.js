@@ -49,8 +49,6 @@ export class ImageCache {
 
     /**
      * Stores an image pair in the cache.
-     * @param {number} frameNumber - The frame number for the cached images.
-     * @param {object} item - The { fgImg, bgImg } object, both are HTMLImageElements.
      */
     set(frameNumber, item) {
         this.cache.set(frameNumber, item);
@@ -62,8 +60,6 @@ export class ImageCache {
 
     /**
      * Retrieves an image pair from the cache based on the frame number.
-     * @param {number} frameNumber - The frame number for the requested images.
-     * @returns {object|undefined} - The cached { fgImg, bgImg } or undefined if not found.
      */
     get(frameNumber) {
         return this.cache.get(frameNumber);

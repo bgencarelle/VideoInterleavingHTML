@@ -1,13 +1,13 @@
 // js/main.js
 
-import { initializeWebGL, canvas } from './webgl.js';
-import { startAnimation } from './animation.js';
-import { MAIN_IMAGES_JSON, FLOAT_IMAGES_JSON, BUFFER_SIZE } from './config.js';
-import { ImageCache } from './imageCache.js';
-import { IndexController } from './indexController.js';
-import { FolderController } from './folderController.js';
+import {canvas, initializeWebGL} from './webgl.js';
+import {startAnimation} from './animation.js';
+import {BUFFER_SIZE, FLOAT_IMAGES_JSON, FPS, MAIN_IMAGES_JSON} from './config.js';
+import {ImageCache} from './imageCache.js';
+import {IndexController} from './indexController.js';
+import {FolderController} from './folderController.js';
 
-const PRELOAD_THRESHOLD = 15; // When buffer has less than 15 frames remaining, preload more
+const PRELOAD_THRESHOLD = BUFFER_SIZE / 2; // When buffer has less than 15 frames remaining, preload more
 
 // Preloaded JSON data
 let preloadedData = {};
@@ -50,67 +50,7 @@ export function fetchPreloadedJSON(type) {
     }
 }
 
-/**
- * Function to detect WebGL support.
- * @returns {boolean} - True if WebGL is supported, false otherwise.
- */
-function isWebGLSupported() {
-    try {
-        const testCanvas = document.createElement('canvas');
-        return !!(window.WebGLRenderingContext &&
-            (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')));
-    } catch (e) {
-        return false;
-    }
-}
 
-/**
- * Display "WE" if WebGL is not supported.
- */
-function handleWebGLUnsupported() {
-    const displayCanvas = document.getElementById('displayCanvas');
-    // Modify the canvas to display "WE"
-    displayCanvas.innerHTML = 'WE';
-    // Style the canvas to ensure "WE" is visible
-    displayCanvas.style.display = 'flex';
-    displayCanvas.style.justifyContent = 'center';
-    displayCanvas.style.alignItems = 'center';
-    displayCanvas.style.color = '#FFFFFF';
-    displayCanvas.style.fontSize = '2rem';
-    displayCanvas.style.backgroundColor = '#000';
-}
-
-/**
- * Initialize WebGL and set data attribute.
- * If unsupported, display "WE" and halt initialization.
- * @returns {boolean} - True if WebGL is supported and initialized, false otherwise.
- */
-function initializeWebGLSupport() {
-    const htmlElement = document.documentElement;
-
-    if (isWebGLSupported()) {
-        try {
-            initializeWebGL();
-            htmlElement.setAttribute('data-webgl', 'supported');
-            return true;
-        } catch (e) {
-            console.error('WebGL initialization failed:', e);
-            handleWebGLUnsupported();
-            return false;
-        }
-    } else {
-        handleWebGLUnsupported();
-        return false;
-    }
-}
-
-// Initialize WebGL support
-if (!initializeWebGLSupport()) {
-    // WebGL is not supported; halt further execution
-    console.log('WebGL is not supported. Displaying fallback message.');
-    // Prevent further script execution by throwing an error
-    throw new Error('WebGL is not supported.');
-}
 
 /**
  * Toggles fullscreen mode for the canvas when clicked.
@@ -132,6 +72,8 @@ canvas.addEventListener('click', () => {
  */
 (async function initializeApp() {
     try {
+        const htmlElement = document.documentElement;
+        initializeWebGL();
         // Preload JSON data into memory
         await preloadJSON();
 
@@ -169,8 +111,7 @@ canvas.addEventListener('click', () => {
 
         // Subscribe to frame changes to trigger preloading when buffer is low
         indexController.onFrameChange((frameNumber) => {
-            const currentFrame = frameNumber;
-            const framesRemaining = imageCache.getFramesRemaining(currentFrame);
+            const framesRemaining = imageCache.getFramesRemaining(frameNumber);
 
             if (framesRemaining < PRELOAD_THRESHOLD) {
                 imageCache.preloadImages();

@@ -3,6 +3,7 @@
 
 import re
 import json
+import shutil
 from pathlib import Path
 from PIL import Image
 from collections import defaultdict
@@ -60,7 +61,7 @@ def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Pat
                 x["folder_rel"]
             ))
             # Assign indices
-            for idx, folder_data in enumerate(sub_group_sorted, 1):
+            for idx, folder_data in enumerate(sub_group_sorted, 0):
                 folder_data["index"] = idx
             json_filename = file_name_format.format(file_count)
             json_path = processed_dir / json_filename
@@ -76,6 +77,9 @@ def write_folder_list():
     # Determine the script's directory
     script_dir = Path(__file__).parent.resolve()
     processed_dir = script_dir / "folders_processed"
+	
+    if processed_dir.exists():
+        shutil.rmtree(processed_dir)
 
     # Ensure the processed directory exists
     processed_dir.mkdir(exist_ok=True)

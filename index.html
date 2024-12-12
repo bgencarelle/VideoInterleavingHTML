@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-webgl="unsupported">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -7,20 +7,18 @@
     <title>Fullscreen Image Viewer - WebGL</title>
 
     <!-- Link to your CSS file -->
-    <link rel="stylesheet" href="./css/styles.css">
+    <link rel="preload" href="./js/main.js" as="script" crossorigin="anonymous">
 
-    <!-- Preload critical assets -->
-    <link rel="preload" href="./js/main.js" as="script">
+    <!-- Preload critical assets if needed -->
+    <link rel="modulepreload" href="./js/main.js">
 </head>
 
 <body>
     <!-- Canvas for rendering images -->
-    <canvas id="displayCanvas" aria-label="Image Viewer Canvas">
-        WE
-    </canvas>
+    <canvas id="displayCanvas" aria-label="Image Viewer Canvas"></canvas>
 
-    <!-- Link to your JavaScript file -->
-    <script type="module" src="./js/main.js"></script>
+    <!-- Load your JavaScript file -->
+    <script type="module" src="./js/main.js" crossorigin="anonymous"></script>
 </body>
 
 </html>

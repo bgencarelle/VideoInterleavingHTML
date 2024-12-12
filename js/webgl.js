@@ -45,9 +45,13 @@ export function initializeWebGL() {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
 
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // Standard alpha blending
     // Set WebGL viewport
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0, 0, 0, 1); // Clear to black
+    gl.clearColor(.1, .05, .05, 1); // Clear to black
+    console.log('Setting clear color to black');
+
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // Set up shaders and buffers
@@ -78,12 +82,12 @@ function setupShaders() {
             // Apply scaling to maintain aspect ratio
             vec2 scaledPosition = a_position.xy * u_scale;
             gl_Position = vec4(scaledPosition, 0.0, 1.0);
-            v_texCoord = vec2(a_texCoord.x, 1.0 - a_texCoord.y); // Flip texture vertically
+            v_texCoord = vec2(a_texCoord.x, a_texCoord.y); // Flip texture vertically
         }
     `;
 
     const fragmentShaderSource = `
-        precision mediump float;
+        precision highp float;
         uniform sampler2D u_fgImage;
         uniform sampler2D u_bgImage;
         varying vec2 v_texCoord;
@@ -91,7 +95,11 @@ function setupShaders() {
         void main() {
             vec4 bgColor = texture2D(u_bgImage, v_texCoord);
             vec4 fgColor = texture2D(u_fgImage, v_texCoord);
-            gl_FragColor = mix(fgColor, bgColor, bgColor.a); // Blend foreground over background
+            vec3 blendedRGB = fgColor.rgb * fgColor.a + bgColor.rgb * (1.0 - fgColor.a);
+            float blendedAlpha = fgColor.a + bgColor.a * (1.0 - fgColor.a);
+                gl_FragColor = vec4(blendedRGB, blendedAlpha);
+
+
         }
     `;
 
@@ -193,22 +201,20 @@ function setupTextures() {
     // Create foreground texture
     fgTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, fgTexture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // Flip texture vertically
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); // Clamp to edge
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); // Clamp to edge
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);    // Linear filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);    // Linear filtering
     // Initialize with a single blue pixel as a placeholder
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 5, 255]));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 255]));
 
     // Create background texture
     bgTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, bgTexture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // Flip texture vertically
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); // Clamp to edge
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); // Clamp to edge
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);    // Linear filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);    // Linear filtering
     // Initialize with a single blue pixel as a placeholder
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 5, 255]));
 }

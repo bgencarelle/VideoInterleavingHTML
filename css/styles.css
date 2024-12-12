@@ -2,7 +2,7 @@
 * {
     margin: 0;
     padding: 0;
-    box-sizing: border-box;
+    box-sizing: content-box;
 }
 
 /* Ensure the body and html take up the full viewport */
@@ -10,21 +10,8 @@ body, html {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: antiquewhite; /* Fallback background color */
+    background-color: #00000000; /* Set background color */
     font-family: Arial, sans-serif;
-}
-
-/* Style adjustments when WebGL is supported */
-html[data-webgl="supported"] body {
-    background-color: #000000; /* Example: Slightly different background when WebGL is active */
-}
-
-html[data-webgl="supported"] #displayCanvas {
-    cursor: crosshair; /* Indicate interactivity */
-    border: 2px solid #000000; /* Style the canvas specifically */
-    /* GPU acceleration hints */
-    will-change: transform;
-    transform: translateZ(0);
 }
 
 /* Style the canvas to cover the entire viewport */
@@ -37,12 +24,12 @@ html[data-webgl="supported"] #displayCanvas {
     display: flex;
     justify-content: center;
     align-items: center;
-    color: #000000;
+    color: #00000000;
     font-size: 2rem;
-    background-color: #000;
-}
-
-/* Hide fallback content when WebGL is supported */
-html[data-webgl="supported"] #displayCanvas::before {
-    content: none;
+    background-color: #0000;
+    cursor: crosshair; /* Indicate interactivity */
+    border: none; /* Style the canvas */
+    /* GPU acceleration hints */
+    will-change: transform;
+    transform: translateZ(0);
 }
