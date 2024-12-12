@@ -2,7 +2,6 @@
 
 import { FRAME_DURATION } from './config.js';
 import { renderImages } from './webgl.js';
-import { calculateFPS } from './utils.js';
 
 /**
  * Creates the render loop that updates and renders images based on the current frame number.
@@ -12,39 +11,44 @@ import { calculateFPS } from './utils.js';
  */
 function createRenderLoop(indexController, imageCache) {
     let lastFrameTime = performance.now();
+    const desiredFPS = 60; // Adjust as needed
+    const frameInterval = 1000 / desiredFPS;
 
     return function renderLoop(timestamp) {
         try {
-            // Calculate elapsed time since last frame for FPS calculation
             const elapsed = timestamp - lastFrameTime;
-            lastFrameTime = timestamp;
 
-            // Calculate FPS
-            const { fps, frameTimes } = calculateFPS(indexController.frameTimes, FRAME_DURATION, elapsed);
-            indexController.fps = fps;
-            indexController.frameTimes = frameTimes;
+            if (elapsed >= frameInterval) {
+                lastFrameTime = timestamp - (elapsed % frameInterval); // Adjust for any lag
 
-            // Update the frame number based on current timestamp
-            indexController.update(timestamp);
+                // Update the frame number based on current timestamp
+                indexController.update(timestamp);
 
-            const currentFrameNumber = indexController.getCurrentFrameNumber();
+                const currentFrameNumber = indexController.getCurrentFrameNumber();
 
-            // Fetch the latest image from the buffer
-            const imagePair = imageCache.get(currentFrameNumber);
+                // Fetch the latest image from the buffer
+                const imagePair = imageCache.get(currentFrameNumber);
 
-            if (imagePair) {
-                const { fgImg, bgImg } = imagePair;
+                if (imagePair) {
+                    const { fgImg, bgImg } = imagePair;
 
-                // Render images
-                renderImages(fgImg, bgImg);
-            } else {
-                console.warn(`No image available for frame ${currentFrameNumber}`);
+                    // Render images
+                    renderImages(fgImg, bgImg);
+                } else {
+                    console.warn(`No image available for frame ${currentFrameNumber}`);
+                }
+
+                // Notify ImageCache that the current frame has been rendered
+                imageCache.handleFrameRender(currentFrameNumber).catch(error => {
+                    console.error('Error in handleFrameRender:', error);
+                });
             }
+
+            requestAnimationFrame(renderLoop);
         } catch (error) {
             console.error('Error in renderLoop:', error);
+            requestAnimationFrame(renderLoop); // Ensure the loop continues even after an error
         }
-
-        requestAnimationFrame(renderLoop);
     };
 }
 

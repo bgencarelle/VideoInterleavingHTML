@@ -25,7 +25,7 @@ let program, positionBuffer, texCoordBuffer;
 let fgTexture, bgTexture;
 
 // Initialize WebGL upon script load
-initializeWebGL();
+//initializeWebGL();
 
 /**
  * Initializes WebGL context, shaders, buffers, and textures.

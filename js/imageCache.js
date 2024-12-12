@@ -1,22 +1,6 @@
 // js/imageCache.js
 import { MAX_CONCURRENT_FETCHES } from './config.js';
-
-/**
- * Loads an image as an HTMLImageElement.
- * @param {string} path - The path to the image.
- * @returns {Promise<HTMLImageElement|null>} A promise resolving to an HTMLImageElement or null if failed.
- */
-function loadImage(path) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.src = path;
-        img.onload = () => resolve(img);
-        img.onerror = (error) => {
-            console.error(`Failed to load image: ${path}`, error);
-            resolve(null);
-        };
-    });
-}
+import { loadImage } from './imageLoader.js';
 
 /**
  * ImageCache is responsible for caching image pairs (foreground/background) based on frame numbers.
@@ -42,9 +26,6 @@ export class ImageCache {
         this.mainFolders = options.mainFolders;
         this.floatFolders = options.floatFolders;
         this.isPreloading = false; // Prevent concurrent preloads
-
-        // Queue to manage preload order
-        this.preloadQueue = [];
     }
 
     /**
@@ -79,54 +60,54 @@ export class ImageCache {
      * @param {number} currentFrame - The current frame number.
      * @returns {number} Number of frames remaining in the buffer.
      */
-    getFramesRemaining(currentFrame) {
-        let remaining = 0;
-        for (let i = 1; i <= this.bufferSize; i++) {
-            const nextFrame = (currentFrame + i) % this.cycleLength;
-            if (this.has(nextFrame)) {
-                remaining++;
-            }
-        }
-        return remaining;
+    // Removed getFramesRemaining if unused
+
+    /**
+     * Handles frame rendering by updating the cache based on the current frame number.
+     * Initiates preloading of upcoming frames.
+     * @param {number} currentFrame - The current frame number.
+     */
+    async handleFrameRender(currentFrame) {
+        // After rendering the current frame, start preloading upcoming frames
+        await this.preloadImages(currentFrame);
     }
 
     /**
      * Preloads images for upcoming frames based on the buffer size.
      * Utilizes concurrency control to limit simultaneous fetches.
      * Ensures that images are loaded in advance to prevent rendering delays.
+     * @param {number} currentFrame - The current frame number to base preloading.
      */
-async preloadImages() {
-    if (this.isPreloading) return;
-    this.isPreloading = true;
+    async preloadImages(currentFrame) {
+        if (this.isPreloading) return;
+        this.isPreloading = true;
 
-    try {
-        const bufferSize = this.bufferSize;
-        const currentFrame = this.indexController.getCurrentFrameNumber();
-        const preloadFrames = this.getPreloadFrames(currentFrame, bufferSize);
-        const framesToPreload = preloadFrames.filter(frameNumber => !this.has(frameNumber));
+        try {
+            const preloadFrames = this.getPreloadFrames(currentFrame, this.bufferSize);
+            const framesToPreload = preloadFrames.filter(frameNumber => !this.has(frameNumber));
 
-        const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
-        const queue = [...framesToPreload];
-        const workers = [];
+            const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
+            const queue = [...framesToPreload];
+            const workers = [];
 
-        const worker = async () => {
-            while (queue.length > 0) {
-                const frameNumber = queue.shift();
-                await this.loadAndCacheFrame(frameNumber);
+            const worker = async () => {
+                while (queue.length > 0) {
+                    const frameNumber = queue.shift();
+                    await this.loadAndCacheFrame(frameNumber);
+                }
+            };
+
+            for (let i = 0; i < concurrencyLimit; i++) {
+                workers.push(worker());
             }
-        };
 
-        for (let i = 0; i < concurrencyLimit; i++) {
-            workers.push(worker());
+            await Promise.all(workers);
+        } catch (error) {
+            console.error('Error during image preloading:', error);
+        } finally {
+            this.isPreloading = false;
         }
-
-        await Promise.all(workers);
-    } catch (error) {
-        console.error('Error during image preloading:', error);
-    } finally {
-        this.isPreloading = false;
     }
-}
 
     /**
      * Determines which frames to preload based on the current frame and buffer size.
@@ -160,10 +141,10 @@ async preloadImages() {
         }
 
         try {
-            // Load both images as HTMLImageElement
+            // Load both images as HTMLImageElement with retry logic
             const [fgImg, bgImg] = await Promise.all([
-                loadImage(mainImage),
-                loadImage(floatImage)
+                loadImage(mainImage, 3, 1000), // 3 retries with 1-second delay
+                loadImage(floatImage, 3, 1000)
             ]);
 
             if (fgImg && bgImg) {
@@ -181,18 +162,18 @@ async preloadImages() {
      * Trims the cache to remove frames that are no longer needed.
      * Ensures that only the required frames within the buffer are kept.
      */
-trimCache() {
-    const currentFrame = this.indexController.getCurrentFrameNumber();
-    const validFrames = new Set([
-        currentFrame,
-        ...this.getPreloadFrames(currentFrame, this.bufferSize)
-    ]);
+    trimCache() {
+        const currentFrame = this.indexController.getCurrentFrameNumber();
+        const validFrames = new Set([
+            currentFrame,
+            ...this.getPreloadFrames(currentFrame, this.bufferSize)
+        ]);
 
-    for (const frameNumber of this.cache.keys()) {
-        if (!validFrames.has(frameNumber)) {
-            this.cache.delete(frameNumber);
-            // Optionally, you can also nullify references to help garbage collection
+        for (const frameNumber of this.cache.keys()) {
+            if (!validFrames.has(frameNumber)) {
+                this.cache.delete(frameNumber);
+                // Optionally, you can also nullify references to help garbage collection
+            }
         }
     }
-}
 }

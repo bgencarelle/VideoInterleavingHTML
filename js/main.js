@@ -1,15 +1,15 @@
 // js/main.js
 
-import {canvas, initializeWebGL} from './webgl.js';
-import {startAnimation} from './animation.js';
-import {BUFFER_SIZE, FLOAT_IMAGES_JSON, FPS, MAIN_IMAGES_JSON} from './config.js';
-import {ImageCache} from './imageCache.js';
-import {IndexController} from './indexController.js';
-import {FolderController} from './folderController.js';
+import { canvas, initializeWebGL } from './webgl.js';
+import { startAnimation } from './animation.js';
+import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES, FLOAT_IMAGES_JSON, MAIN_IMAGES_JSON } from './config.js';
+import { ImageCache } from './imageCache.js';
+import { IndexController } from './indexController.js';
+import { FolderController } from './folderController.js';
 
-const PRELOAD_THRESHOLD = BUFFER_SIZE / 2; // When buffer has less than 15 frames remaining, preload more
-
-// Preloaded JSON data
+/**
+ * Preloaded JSON data
+ */
 let preloadedData = {};
 
 /**
@@ -50,8 +50,6 @@ export function fetchPreloadedJSON(type) {
     }
 }
 
-
-
 /**
  * Toggles fullscreen mode for the canvas when clicked.
  */
@@ -72,7 +70,6 @@ canvas.addEventListener('click', () => {
  */
 (async function initializeApp() {
     try {
-        const htmlElement = document.documentElement;
         initializeWebGL();
         // Preload JSON data into memory
         await preloadJSON();
@@ -102,24 +99,8 @@ canvas.addEventListener('click', () => {
             floatFolders: floatData.folders,
         });
 
-        // Subscribe to folder changes to trigger preloading
-        folderController.onFolderChange((event) => {
-            if (event.folderChanged) {
-                imageCache.preloadImages();
-            }
-        });
-
-        // Subscribe to frame changes to trigger preloading when buffer is low
-        indexController.onFrameChange((frameNumber) => {
-            const framesRemaining = imageCache.getFramesRemaining(frameNumber);
-
-            if (framesRemaining < PRELOAD_THRESHOLD) {
-                imageCache.preloadImages();
-            }
-        });
-
         // Initialize ImageCache by preloading initial images
-        await imageCache.preloadImages();
+        await imageCache.preloadImages(indexController.getCurrentFrameNumber());
 
         // Start the animation
         startAnimation(indexController, imageCache);
