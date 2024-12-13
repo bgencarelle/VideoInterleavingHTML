@@ -142,9 +142,9 @@ export class ImageCache {
 
         try {
             // Load both images as HTMLImageElement with retry logic
-            const [fgImg, bgImg] = await Promise.all([
-                loadImage(mainImage, 3, 1000), // 3 retries with 1-second delay
-                loadImage(floatImage, 3, 1000)
+            const [bgImg, fgImg] = await Promise.all([
+                loadImage(mainImage, 3, 10), // 3 retries with 1-second delay
+                loadImage(floatImage, 3, 10)
             ]);
 
             if (fgImg && bgImg) {

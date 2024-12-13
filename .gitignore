@@ -172,8 +172,7 @@ cython_debug/
 .DS_Store
 
 .idea/codeStyles/
-
-.idea/
+.idea
 # Project exclude paths
 .generated_img_lists
 *.old
@@ -183,5 +182,14 @@ cython_debug/
 /dist/*
 generated_img_lists/
 
-folders_processed/*
+folders_processed/*.*
 folders_processed/
+
+
+float_images.json
+float_images.json.gz
+main_images.json
+*images.json.gz
+float_folders_2221.json
+folder_count_57746.txt
+main_folders_2221.json
