@@ -6,6 +6,7 @@ import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES, FLOAT_IMAGES_JSON, MAIN_IMAGES_JSO
 import { ImageCache } from './imageCache.js';
 import { IndexController } from './indexController.js';
 import { FolderController } from './folderController.js';
+import { showModeOverlay } from './utils.js'; // Imported showModeOverlay
 
 /**
  * Preloaded JSON data
@@ -104,6 +105,83 @@ canvas.addEventListener('click', () => {
 
         // Start the animation
         startAnimation(indexController, imageCache);
+
+        // Pause state flag
+        let paused = false;
+
+        // Scheduling state for L key
+        let isLScheduling = false;
+
+        // Keyboard event listener
+        window.addEventListener('keydown', (event) => {
+            const key = event.key.toLowerCase();
+            if (key === 'p') {
+                // Toggle pause/unpause
+                if (!paused) {
+                    indexController.pause();
+                    paused = true;
+                    showModeOverlay('Paused');
+                } else {
+                    indexController.unpause();
+                    paused = false;
+                    showModeOverlay('Unpaused');
+                }
+            } else if (key === 's') {
+                // Display "Restart" in bottom-right corner
+                showModeOverlay('Restart', 'bottom-right');
+
+                // Reset the index to 0 and reset the time
+                indexController.reset();
+
+            } else if (key === 'l') {
+                if (!isLScheduling) {
+                    // Start scheduling pause + reset after 2 cycles
+                    indexController.schedulePauseAfterCycles(2);
+                    isLScheduling = true;
+                    showModeOverlay('Scheduling Pause & Reset after 2 cycles', 'bottom-right');
+                } else {
+                    // Cancel any scheduled pause + reset
+                    indexController.cancelScheduledPause();
+                    isLScheduling = false;
+                    showModeOverlay('Cancelled Scheduled Pause & Reset', 'bottom-right');
+                }
+            }
+        });
+
+        // Listen to IndexController events for better user feedback
+        indexController.onFrameChange((frameNumber, event) => {
+            if (event.cycleCompleted) {
+                // Display current cycle number
+                showModeOverlay(`CYCLE #${event.cycleNumber}`, 'bottom-right');
+            }
+            if (event.schedulingPause) {
+                showModeOverlay(`Pause & Reset scheduled after ${event.cycles} cycles`, 'bottom-right');
+            }
+            if (event.cancelScheduledPause) {
+                showModeOverlay('Scheduled Pause & Reset cancelled', 'bottom-right');
+            }
+            if (event.scheduledPause) {
+                showModeOverlay('Paused and Reset', 'bottom-right');
+                paused = true; // Since controller is paused
+                isLScheduling = false; // Reset scheduling flag
+            }
+            if (event.paused) {
+                // Additional handling if needed
+            }
+            if (event.unpaused) {
+                // Additional handling if needed
+            }
+            if (event.reset) {
+                // Additional handling if needed
+            }
+        });
+
+        // Optional: Handle fullscreen change to ensure overlay is appended correctly
+        document.addEventListener('fullscreenchange', () => {
+            // Reposition the overlay if needed
+            // For this implementation, the overlay function handles dynamic parent selection
+        });
+
     } catch (error) {
         console.error('Error during initialization:', error);
     }

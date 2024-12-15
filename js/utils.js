@@ -6,26 +6,17 @@ export function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-
-export function calculateFPS(frameTimes = [], maxFrames = 60, elapsed = 0) {
-    if (elapsed > 0) frameTimes.push(elapsed); // Add the elapsed time for this frame
-    if (frameTimes.length > maxFrames) frameTimes.shift(); // Limit the frame buffer size
-
-    const averageDeltaTime = frameTimes.reduce((sum, time) => sum + time, 0) / frameTimes.length || 0;
-    const fps = averageDeltaTime > 0 ? Math.round(1000 / averageDeltaTime) : 0;
-
-    return { fps, frameTimes };
-}
-
-
-export function showModeOverlay(message) {
+/**
+ * Displays an overlay message on the screen.
+ * @param {string} message - The message to display.
+ * @param {string} position - The position of the overlay ('top-right' or 'bottom-right').
+ */
+export function showModeOverlay(message, position = 'top-right') {
     let overlay = document.getElementById('mode-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'mode-overlay';
         overlay.style.position = 'fixed';
-        overlay.style.top = '10px';
-        overlay.style.right = '10px';
         overlay.style.background = 'rgba(0,0,0,0.7)';
         overlay.style.color = '#fff';
         overlay.style.padding = '5px 10px';
@@ -35,6 +26,18 @@ export function showModeOverlay(message) {
         overlay.style.transition = 'opacity 0.5s';
         overlay.style.opacity = '1';
         document.body.appendChild(overlay);
+    }
+
+    // Set position based on the 'position' parameter
+    if (position === 'bottom-right') {
+        overlay.style.bottom = '10px';
+        overlay.style.right = '10px';
+        overlay.style.top = 'auto'; // Override top if previously set
+    } else {
+        // Default to top-right
+        overlay.style.top = '10px';
+        overlay.style.right = '10px';
+        overlay.style.bottom = 'auto'; // Override bottom if previously set
     }
 
     overlay.textContent = message;

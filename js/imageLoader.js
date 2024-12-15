@@ -1,8 +1,6 @@
-// js/imageLoader.js
-
 /**
  * Loads an image as an HTMLImageElement with retry capability.
- * @param {string} path - The path to the image.
+ * @param {string} path - The path to the image (can be a file:// URL or a Data URL).
  * @param {number} retries - Number of retry attempts (optional).
  * @param {number} delay - Delay between retries in milliseconds (optional).
  * @returns {Promise<HTMLImageElement|null>} A promise resolving to an HTMLImageElement or null if failed.
@@ -11,7 +9,14 @@ export function loadImage(path, retries = 3, delay = 1000) {
     return new Promise((resolve) => {
         const attemptLoad = (attempt) => {
             const img = new Image();
-            img.src = path;
+
+            // Handle local file paths (file://)
+            if (path.startsWith('file://')) {
+                img.src = path;  // This is used for local files directly
+            } else {
+                img.src = path;  // For other paths (URLs or Data URLs)
+            }
+
             img.onload = () => resolve(img);
             img.onerror = () => {
                 if (attempt < retries) {

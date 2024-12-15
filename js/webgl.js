@@ -1,7 +1,7 @@
 // js/webgl.js
 
 export const canvas = document.getElementById('displayCanvas');
-const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
 
 if (!gl) {
     throw new Error("WebGL not supported");
@@ -46,10 +46,10 @@ export function initializeWebGL() {
     canvas.style.height = `${height}px`;
 
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // Standard alpha blending
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); // DO NOT CHANGE
     // Set WebGL viewport
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(.1, .05, .05, 1); // Clear to black
+    gl.clearColor(.01, .05, .05, 1); // Clear to black
     console.log('Setting clear color to black');
 
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -199,12 +199,14 @@ function setupBuffers() {
  */
 function setupTextures() {
     // Create foreground texture
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+
     fgTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, fgTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); // Clamp to edge
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); // Clamp to edge
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);    // Linear filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);    // Linear filtering
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);    // Linear filtering
     // Initialize with a single blue pixel as a placeholder
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 255]));
 
