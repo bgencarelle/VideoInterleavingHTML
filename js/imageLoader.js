@@ -1,37 +1,31 @@
+// js/loadImageBitmap.js
+
 /**
- * Loads an image as an HTMLImageElement with retry capability.
+ * Loads an image as an ImageBitmap with retry capability using Fetch API.
  * @param {string} path - The path to the image (can be a file:// URL or a Data URL).
  * @param {number} retries - Number of retry attempts (optional).
  * @param {number} delay - Delay between retries in milliseconds (optional).
- * @returns {Promise<HTMLImageElement|null>} A promise resolving to an HTMLImageElement or null if failed.
+ * @returns {Promise<ImageBitmap|null>} A promise resolving to an ImageBitmap or null if failed.
  */
-export function loadImage(path, retries = 3, delay = 1000) {
-    return new Promise((resolve) => {
-        const attemptLoad = (attempt) => {
-            const img = new Image();
-
-            // Handle local file paths (file://)
-            if (path.startsWith('file://')) {
-                img.src = path;  // This is used for local files directly
-            } else {
-                img.src = path;  // For other paths (URLs or Data URLs)
+export async function loadImage(path, retries = 3, delay = 10) {
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+            const response = await fetch(path, { mode: 'cors' }); // Adjust mode as needed
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-
-            img.onload = () => {
-                //console.log(`Image loaded successfully from: ${path}`);
-                resolve(img);
-            };
-            img.onerror = () => {
-                if (attempt < retries) {
-                    console.warn(`Retrying to load image: ${path} (Attempt ${attempt + 1})`);
-                    setTimeout(() => attemptLoad(attempt + 1), delay);
-                } else {
-                    console.error(`Failed to load image after ${retries} attempts: ${path}`);
-                    resolve(null);
-                }
-            };
-        };
-
-        attemptLoad(0);
-    });
+            const blob = await response.blob();
+            const imageBitmap = await createImageBitmap(blob);
+            //console.log(`ImageBitmap loaded successfully from: ${path}`);
+            return imageBitmap;
+        } catch (error) {
+            if (attempt <= retries) {
+                console.warn(`Retrying to load ImageBitmap: ${path} (Attempt ${attempt})`);
+                await new Promise(res => setTimeout(res, delay));
+            } else {
+                console.error(`Failed to load ImageBitmap after ${retries} attempts: ${path}`, error);
+                return null;
+            }
+        }
+    }
 }
