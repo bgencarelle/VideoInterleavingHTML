@@ -1,132 +1,150 @@
-// js/canvas.js
+// js/canvas2d.js (converted from WebGL with restored alpha blending)
 
 export const canvas = document.getElementById('displayCanvas');
-export const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d');
 
-export const offscreenCanvas = document.createElement('canvas');
-export const offscreenCtx = offscreenCanvas.getContext('2d');
+if (!ctx) {
+    throw new Error("2D context not supported");
+}
 
-// Cached variables to store DPR and drawing parameters
+// Cached variables to store DPR and canvas dimensions
 let cachedDpr = 1;
 let cachedCssWidth = 0;
 let cachedCssHeight = 0;
-let cachedCanvasAspect = 1;
-let cachedDrawParams = null;
+
+// Cached image aspect ratio (set by the first image loaded)
+let imageAspectRatio = null;
+
+// Scaling factors to maintain aspect ratio: [scaleX, scaleY]
+let scale = [1.0, 1.0];
+
+initializeCanvas2D(); // Initialize Canvas2D on script load
 
 /**
- * Renders the foreground and background images onto the offscreen canvas,
- * then draws the offscreen canvas onto the main canvas.
- *
- * @param {HTMLImageElement} fgImg - The foreground image to draw.
- * @param {HTMLImageElement} bgImg - The background image to draw.
- * @param {boolean} shouldClear - Whether to clear the canvases before drawing.
+ * Initializes the canvas with the correct size, scaling, and event listeners.
+ * Maintains the original function name and export, but now sets up a 2D environment.
  */
-export function renderImages(fgImg, bgImg, shouldClear = true) {
-    if (shouldClear) {
-        // Clear the offscreen canvas
-        offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-    }
-
-    // If drawing parameters are not cached, compute and cache them
-    if (!cachedDrawParams) {
-        cachedDrawParams = computeDrawParameters(offscreenCtx, fgImg);
-    }
-
-    const { offsetX, offsetY, drawWidth, drawHeight } = cachedDrawParams;
-
-    // Draw the foreground and background images using cached parameters
-    offscreenCtx.drawImage(fgImg, offsetX, offsetY, drawWidth, drawHeight);
-    offscreenCtx.drawImage(bgImg, offsetX, offsetY, drawWidth, drawHeight);
-
-    if (shouldClear) {
-        // Clear the main canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-
-    // Draw the offscreen canvas onto the main canvas
-    ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
-}
-
-/**
- * Initializes both the main and off-screen canvases to match the window size
- * and account for device pixel ratio for crisp rendering on high-DPI displays.
- */
-export function initializeCanvas() {
+export function initializeCanvas2D() {
+    // Get device pixel ratio and window dimensions
     cachedDpr = window.devicePixelRatio || 1;
     const width = window.innerWidth;
     const height = window.innerHeight;
 
     cachedCssWidth = width;
     cachedCssHeight = height;
-    cachedCanvasAspect = width / height;
-    cachedDrawParams = null; // Reset cached draw parameters on resize
 
-    // Set main canvas dimensions and scale
+    // Set canvas dimensions based on DPR
     canvas.width = width * cachedDpr;
     canvas.height = height * cachedDpr;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
+
+    // Scale the drawing context to account for device pixel ratio
     ctx.scale(cachedDpr, cachedDpr);
 
-    // Set off-screen canvas dimensions and scale
-    offscreenCanvas.width = width * cachedDpr;
-    offscreenCanvas.height = height * cachedDpr;
-    offscreenCanvas.style.width = `${width}px`;
-    offscreenCanvas.style.height = `${height}px`;
-    offscreenCtx.scale(cachedDpr, cachedDpr);
+    // Clear the canvas with a background color (matching original WebGL clear color)
+    ctx.fillStyle = 'rgba(2, 13, 13, 1)'; // Equivalent to gl.clearColor(.01, .05, .05, 1)
+    ctx.fillRect(0, 0, width, height);
+    console.log('Setting clear color to rgba(2, 13, 13, 1)');
 
-    // Enable image smoothing for better quality
-    ctx.imageSmoothingEnabled = false;
-    offscreenCtx.imageSmoothingEnabled = false;
-    // backgroundCtx.imageSmoothingEnabled = true;
+    // Initial aspect ratio scaling (will be updated after the first image is loaded)
+    computeScalingFactors();
+
+    // Handle window resize
+    window.addEventListener('resize', handleResize);
 }
 
 /**
- * Computes and returns the drawing parameters for an image while preserving its aspect ratio.
- *
- * @param {CanvasRenderingContext2D} context - The canvas context to use for calculations.
- * @param {HTMLImageElement} img - The image for which to compute draw parameters.
- * @returns {Object} An object containing drawWidth, drawHeight, offsetX, and offsetY.
+ * Computes scaling factors based on canvas and image aspect ratios to maintain aspect ratio.
+ * This logic remains the same, but now applies to 2D drawing.
  */
-function computeDrawParameters(context, img) {
-    const canvasAspect = cachedCanvasAspect;
-    const imgAspect = img.width / img.height;
-
-    let drawWidth, drawHeight, offsetX, offsetY;
-
-    if (imgAspect > canvasAspect) {
-        // Image is wider than canvas
-        drawWidth = cachedCssWidth;
-        drawHeight = drawWidth / imgAspect;
-        offsetX = 0;
-        offsetY = (cachedCssHeight - drawHeight) / 2;
-    } else {
-        // Image is taller than canvas
-        drawHeight = cachedCssHeight;
-        drawWidth = drawHeight * imgAspect;
-        offsetX = (cachedCssWidth - drawWidth) / 2;
-        offsetY = 0;
+function computeScalingFactors() {
+    if (!imageAspectRatio) {
+        // Default scaling if image aspect ratio is unknown
+        scale = [1.0, 1.0];
+        return;
     }
 
-    // Round values to integers for better performance
-    drawWidth = Math.round(drawWidth);
-    drawHeight = Math.round(drawHeight);
-    offsetX = Math.round(offsetX);
-    offsetY = Math.round(offsetY);
+    const canvasAspect = cachedCssWidth / cachedCssHeight;
 
-    return { drawWidth, drawHeight, offsetX, offsetY };
+    if (canvasAspect > imageAspectRatio) {
+        // Canvas is wider than the image
+        scale[0] = imageAspectRatio / canvasAspect; // Scale X down
+        scale[1] = 1.0;                            // Y remains
+    } else {
+        // Canvas is taller than the image
+        scale[0] = 1.0;                            // X remains
+        scale[1] = canvasAspect / imageAspectRatio; // Scale Y down
+    }
 }
 
-initializeCanvas();
+/**
+ * Handles window resize events by updating canvas size and recomputing scaling factors.
+ */
+function handleResize() {
+    cachedDpr = window.devicePixelRatio || 1;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
 
-// Optimize resizing by debouncing the resize event using requestAnimationFrame
-let resizeScheduled = false;
-window.addEventListener('resize', () => {
-    if (!resizeScheduled) {
-        resizeScheduled = true;
-        requestAnimationFrame(() => {
-            initializeCanvas();
-            resizeScheduled = false;
-        });
+    cachedCssWidth = width;
+    cachedCssHeight = height;
+
+    // Update canvas dimensions
+    canvas.width = width * cachedDpr;
+    canvas.height = height * cachedDpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    // Reset the transformation matrix before scaling
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Scale the drawing context to account for device pixel ratio
+    ctx.scale(cachedDpr, cachedDpr);
+
+    // Clear the canvas with the background color
+    ctx.fillStyle = 'rgba(2, 13, 13, 1)'; // Matching original WebGL clear color
+    ctx.fillRect(0, 0, width, height);
+
+    // Recompute scaling factors based on new canvas size
+    computeScalingFactors();
+}
+
+/**
+ * Renders the foreground and background images on the canvas with alpha blending.
+ * Maintains the same function signature and behavior as closely as possible,
+ * but now uses 2D drawing instead of WebGL.
+ *
+ * @param {HTMLImageElement | HTMLCanvasElement | ImageBitmap} fgImg - The foreground image.
+ * @param {HTMLImageElement | HTMLCanvasElement | ImageBitmap} bgImg - The background image.
+ */
+export function renderImages(fgImg, bgImg) {
+    if (!fgImg || !bgImg) {
+        console.warn("Foreground or background image is null");
+        return;
     }
-});
+
+    // If image aspect ratio is not yet set, compute and cache it
+    if (!imageAspectRatio) {
+        imageAspectRatio = fgImg.width / fgImg.height;
+        computeScalingFactors();
+    }
+
+    // Clear the canvas first with the background color
+    ctx.fillStyle = 'rgba(2, 13, 13, 1)'; // Matching original WebGL clear color
+    ctx.fillRect(0, 0, cachedCssWidth, cachedCssHeight);
+
+    // Compute the drawing region so that we maintain aspect ratio
+    const drawWidth = cachedCssWidth * scale[0];
+    const drawHeight = cachedCssHeight * scale[1];
+    const offsetX = (cachedCssWidth - drawWidth) / 2;
+    const offsetY = (cachedCssHeight - drawHeight) / 2;
+
+    // Enable alpha blending (default is 'source-over', which is equivalent to WebGL's blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA))
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1.0; // Ensure full opacity for images; image alpha will handle transparency
+
+    // Draw the background image
+    ctx.drawImage(bgImg, offsetX, offsetY, drawWidth, drawHeight);
+
+    // Draw the foreground image over the background with alpha blending
+    ctx.drawImage(fgImg, offsetX, offsetY, drawWidth, drawHeight);
+}

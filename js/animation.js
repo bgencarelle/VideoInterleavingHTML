@@ -1,7 +1,7 @@
 // js/animation.js
 
 import { FRAME_DURATION } from './config.js';
-import { renderImages } from './webgl.js';
+import { renderImages } from './canvas.js';
 
 /**
  * Creates the render loop that updates and renders images based on the current frame number.

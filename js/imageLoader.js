@@ -17,7 +17,10 @@ export function loadImage(path, retries = 3, delay = 1000) {
                 img.src = path;  // For other paths (URLs or Data URLs)
             }
 
-            img.onload = () => resolve(img);
+            img.onload = () => {
+                //console.log(`Image loaded successfully from: ${path}`);
+                resolve(img);
+            };
             img.onerror = () => {
                 if (attempt < retries) {
                     console.warn(`Retrying to load image: ${path} (Attempt ${attempt + 1})`);

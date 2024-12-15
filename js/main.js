@@ -1,6 +1,6 @@
 // js/main.js
 
-import { canvas, initializeWebGL } from './webgl.js';
+import { canvas, initializeCanvas2D } from './canvas.js';
 import { startAnimation } from './animation.js';
 import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES, FLOAT_IMAGES_JSON, MAIN_IMAGES_JSON } from './config.js';
 import { ImageCache } from './imageCache.js';
@@ -71,7 +71,7 @@ canvas.addEventListener('click', () => {
  */
 (async function initializeApp() {
     try {
-        initializeWebGL();
+        initializeCanvas2D();
         // Preload JSON data into memory
         await preloadJSON();
 
