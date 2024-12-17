@@ -16,7 +16,7 @@ export class FolderController {
         this.currentMainFolder = 0;
         this.currentFloatFolder = 0;
 
-        // Modes: 'RANDOM', 'INCREMENT'
+        // Modes: 'RANDOM', 'INCREMENT', 'EXTERNAL'
         this.mode = 'RANDOM';
 
         // Listeners for folder changes
@@ -26,34 +26,75 @@ export class FolderController {
         this.rand_mult = getRandomInt(1, 9);
         this.rand_start = getRandomInt(FPS, 5 * FPS);
 
-        // Debounce for external changes (if not needed, can be removed)
+        // Debounce for external changes
         this.pendingExternalChange = null;
         this.debounceTimer = null;
         this.debounceDelay = 200; // ms
+
+        // Bind event handler to ensure proper removal if needed
+        this.boundKeydownHandler = this.handleKeydown.bind(this);
 
         // Setup controls
         this.setupExternalControlHooks();
     }
 
     /**
-     * Sets up external control hooks for mode switching.
+     * Sets up external control hooks for mode switching and folder adjustments.
      */
     setupExternalControlHooks() {
-        document.addEventListener('keydown', (e) => {
-            const key = e.key.toLowerCase();
+        document.addEventListener('keydown', this.boundKeydownHandler);
+    }
 
-            // Mode switching
-            if (key === 'r') this.setMode('RANDOM');
-            if (key === 'i') this.setMode('INCREMENT');
+    /**
+     * Handles keydown events for mode switching and folder adjustments.
+     * @param {KeyboardEvent} e - The keyboard event.
+     */
+    handleKeydown(e) {
+        const key = e.key.toLowerCase();
 
-            // Remove 'e' mode if EXTERNAL is no longer needed
-            // if (key === 'e') this.setMode('EXTERNAL'); // Removed
-        });
+        // Mode switching
+        if (key === 'r') {
+            this.setMode('RANDOM');
+            return;
+        }
+        if (key === 'i') {
+            this.setMode('INCREMENT');
+            return;
+        }
+        if (key === 'e') {
+            this.setMode('EXTERNAL');
+            return;
+        }
+
+        // Folder adjustments in EXTERNAL mode
+        if (this.mode === 'EXTERNAL') {
+            let mainDelta = 0;
+            let floatDelta = 0;
+
+            switch (key) {
+                case '1':
+                    mainDelta = 1; // Increment main folder
+                    break;
+                case '2':
+                    mainDelta = -1; // Decrement main folder
+                    break;
+                case '3':
+                    floatDelta = 1; // Increment float folder
+                    break;
+                case '4':
+                    floatDelta = -1; // Decrement float folder
+                    break;
+                default:
+                    return; // Ignore other keys
+            }
+
+            // Queue the external change with the calculated deltas
+            this.queueExternalChange({ mainDelta, floatDelta });
+        }
     }
 
     /**
      * Debounce: Only keep the last external input and apply after a delay.
-     * (If EXTERNAL mode is removed, this can be omitted)
      */
     queueExternalChange(change) {
         this.pendingExternalChange = change;
@@ -67,7 +108,6 @@ export class FolderController {
 
     /**
      * Apply the pending external change if available.
-     * (If EXTERNAL mode is removed, this can be omitted)
      */
     applyExternalChangeIfPending() {
         if (!this.pendingExternalChange) return;
@@ -77,10 +117,14 @@ export class FolderController {
 
         // Apply changes with rollover
         this.currentMainFolder = (this.currentMainFolder + mainDelta) % this.mainFolders.length;
-        if (this.currentMainFolder < 0) this.currentMainFolder = this.mainFolders.length + this.currentMainFolder;
+        if (this.currentMainFolder < 0) {
+            this.currentMainFolder = this.mainFolders.length + this.currentMainFolder;
+        }
 
         this.currentFloatFolder = (this.currentFloatFolder + floatDelta) % this.floatFolders.length;
-        if (this.currentFloatFolder < 0) this.currentFloatFolder = this.floatFolders.length + this.currentFloatFolder;
+        if (this.currentFloatFolder < 0) {
+            this.currentFloatFolder = this.floatFolders.length + this.currentFloatFolder;
+        }
 
         this.applyManualFolderChange();
     }
@@ -95,10 +139,10 @@ export class FolderController {
 
     /**
      * Sets the current mode.
-     * @param {string} newMode - The new mode ('RANDOM', 'INCREMENT').
+     * @param {string} newMode - The new mode ('RANDOM', 'INCREMENT', 'EXTERNAL').
      */
     setMode(newMode) {
-        const validModes = ['RANDOM', 'INCREMENT']; // Removed 'EXTERNAL'
+        const validModes = ['RANDOM', 'INCREMENT', 'EXTERNAL'];
         if (!validModes.includes(newMode)) {
             console.warn(`[FolderController] Invalid mode: ${newMode}`);
             return;
@@ -128,6 +172,9 @@ export class FolderController {
             case 'INCREMENT':
                 this.updateIncrementMode(frameNumber);
                 break;
+            case 'EXTERNAL':
+                // In EXTERNAL mode, do not auto-update folders
+                break;
             default:
                 console.warn(`[FolderController] Unknown mode: ${this.mode}`);
         }
@@ -140,8 +187,10 @@ export class FolderController {
     updateRandomMode(frameNumber) {
         if (this.mode !== 'RANDOM') return;
 
-        if ((frameNumber < this.rand_start) ||
-            (frameNumber > (10 * this.rand_mult) && frameNumber < (12 * this.rand_mult))) {
+        if (
+            frameNumber < this.rand_start ||
+            (frameNumber > 10 * this.rand_mult && frameNumber < 12 * this.rand_mult)
+        ) {
             this.currentFloatFolder = 0;
             this.currentMainFolder = 0;
             this.rand_start = getRandomInt(FPS, 5 * FPS);
@@ -188,15 +237,19 @@ export class FolderController {
         const floatFolder = this.floatFolders[this.currentFloatFolder];
 
         // Assuming frameNumber maps directly to image index within the folder
-        const mainIndex = PINGPONG_MODE ? this.getPingPongIndex(frameNumber, mainFolder.image_list.length) : frameNumber % mainFolder.image_list.length;
-        const floatIndex = PINGPONG_MODE ? this.getPingPongIndex(frameNumber, floatFolder.image_list.length) : frameNumber % floatFolder.image_list.length;
+        const mainIndex = PINGPONG_MODE
+            ? this.getPingPongIndex(frameNumber, mainFolder.image_list.length)
+            : frameNumber % mainFolder.image_list.length;
+        const floatIndex = PINGPONG_MODE
+            ? this.getPingPongIndex(frameNumber, floatFolder.image_list.length)
+            : frameNumber % floatFolder.image_list.length;
 
         const mainImage = mainFolder.image_list[mainIndex];
         const floatImage = floatFolder.image_list[floatIndex];
 
         return {
             mainImage: mainImage,
-            floatImage: floatImage
+            floatImage: floatImage,
         };
     }
 
@@ -217,7 +270,9 @@ export class FolderController {
      * @param {function} callback - The callback function.
      */
     onFolderChange(callback) {
-        this.listeners.push(callback);
+        if (typeof callback === 'function') {
+            this.listeners.push(callback);
+        }
     }
 
     /**
@@ -225,7 +280,7 @@ export class FolderController {
      * @param {object} event - The event data.
      */
     notifyListeners(event = {}) {
-        this.listeners.forEach(callback => callback(event));
+        this.listeners.forEach((callback) => callback(event));
     }
 
     /**
@@ -236,18 +291,33 @@ export class FolderController {
     getMaxIndex() {
         let maxMain = 0;
         let maxFloat = 0;
-        this.mainFolders.forEach(folder => {
+        this.mainFolders.forEach((folder) => {
             if (folder.image_list.length > maxMain) {
                 maxMain = folder.image_list.length;
             }
         });
-        this.floatFolders.forEach(folder => {
+        this.floatFolders.forEach((folder) => {
             if (folder.image_list.length > maxFloat) {
                 maxFloat = folder.image_list.length;
             }
         });
         const maxIndex = Math.max(maxMain, maxFloat);
-        console.log(`getMaxIndex: maxMain=${maxMain}, maxFloat=${maxFloat}, maxIndex=${maxIndex}`);
+        console.log(
+            `getMaxIndex: maxMain=${maxMain}, maxFloat=${maxFloat}, maxIndex=${maxIndex}`
+        );
         return maxIndex;
+    }
+
+    /**
+     * Destroys the FolderController by removing event listeners and clearing timers.
+     * Call this method when the FolderController is no longer needed to prevent memory leaks.
+     */
+    destroy() {
+        document.removeEventListener('keydown', this.boundKeydownHandler);
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+        }
+        this.listeners = [];
     }
 }

@@ -1,26 +1,42 @@
 // js/indexController.js
-import { IPS } from './config.js';
-import { PINGPONG_MODE } from './config.js';
 
+import { IPS, PINGPONG_MODE } from './config.js';
+
+/**
+ * IndexController manages the progression of frames and cycles within the animation.
+ * It handles frame updates based on time, manages Ping-Pong cycling modes,
+ * and notifies registered listeners about frame changes and cycle completions.
+ */
 export class IndexController {
-    constructor( ) { // Added default fps parameter
-        this.frameNumber = 0; // Current frame number
-        this.cycleLength = 0; // Total frames in a full cycle (forward + backward) if PingPong mode
+    constructor() {
+        // Current frame number
+        this.frameNumber = 0;
+
+        // Total frames in a full cycle (forward + backward) if PingPong mode
+        this.cycleLength = 0;
 
         // Listeners for frame changes and cycle completions
         this.listeners = [];
 
-        // Time-based indexing
-        this.frameDuration = 1000.00/IPS; // Duration per frame in milliseconds
-        this.startTime = performance.now(); // Reference start time
+        // Duration per frame in milliseconds
+        this.frameDuration = 1000.0 / IPS;
 
+        // Reference start time for animation
+        this.startTime = performance.now();
 
-        // Added pause state
+        // Last update timestamp
+        this.lastUpdateTime = this.startTime;
+
+        // Total elapsed time excluding paused durations
+        this.elapsedTime = 0;
+
+        // Pause state flag
         this.paused = false;
 
-
-        // Variables to track cycle completion
+        // Previous frame number to detect cycle completions
         this.previousFrameNumber = 0;
+
+        // Current cycle count
         this.currentCycle = 0;
     }
 
@@ -30,8 +46,20 @@ export class IndexController {
      * @param {number} maxIndex - The maximum index value.
      */
     initialize(maxIndex) {
-        this.cycleLength = PINGPONG_MODE ? maxIndex * 2 : maxIndex;
-        //console.log(`IndexController initialized with cycleLength: ${this.cycleLength}`);
+        if (typeof maxIndex !== 'number' || maxIndex <= 0) {
+            console.error('initialize requires a positive number as maxIndex');
+            return;
+        }
+
+        if (PINGPONG_MODE) {
+            // In PingPong mode, a full cycle is forward and backward
+            this.cycleLength = maxIndex * 2;
+        } else {
+            // In non-PingPong mode, a full cycle is from 0 to maxIndex inclusive
+            this.cycleLength = maxIndex + 1;
+        }
+
+        console.log(`IndexController initialized with cycleLength: ${this.cycleLength}`);
     }
 
     /**
@@ -41,13 +69,20 @@ export class IndexController {
     update(currentTimestamp) {
         if (this.paused) return; // Do not update if paused
 
-        const elapsedTime = currentTimestamp - this.startTime;
-        const totalFrames = Math.floor(elapsedTime / this.frameDuration);
+        // Calculate delta time since last update
+        const deltaTime = currentTimestamp - this.lastUpdateTime;
+        this.lastUpdateTime = currentTimestamp;
+
+        // Update elapsed time
+        this.elapsedTime += deltaTime;
+
+        // Calculate total frames based on elapsed time
+        const totalFrames = Math.floor(this.elapsedTime / this.frameDuration);
 
         // Calculate frameNumber based on PingPong mode
         const frameNumber = PINGPONG_MODE
             ? totalFrames % this.cycleLength
-            : totalFrames % (this.cycleLength + 1); // +1 to include maxIndex
+            : totalFrames % this.cycleLength;
 
         // Detect cycle completion
         let cycleCompleted = false;
@@ -58,8 +93,8 @@ export class IndexController {
                 cycleCompleted = true;
             }
         } else {
-            // Non-PingPong mode, a full cycle is from 0 to maxIndex and back to 0
-            if (frameNumber === 0 && this.previousFrameNumber === this.cycleLength) {
+            // In non-PingPong mode, a full cycle is from 0 to maxIndex inclusive
+            if (frameNumber === 0 && this.previousFrameNumber === (this.cycleLength - 1)) {
                 cycleCompleted = true;
             }
         }
@@ -67,35 +102,33 @@ export class IndexController {
         if (cycleCompleted) {
             this.currentCycle += 1;
             this.notifyListeners({ cycleCompleted: true, cycleNumber: this.currentCycle });
-
-            // Check if scheduling is active and pause after cycles
-            if (this.isScheduling) {
-                if (this.currentCycle >= this.pauseAfterCycles) {
-                    this.pause();
-                    this.reset();
-                    this.isScheduling = false;
-                    this.currentCycle = 0;
-                    this.notifyListeners({ scheduledPause: true });
-                }
-            }
         }
 
         // Determine if frameNumber has changed
         if (this.frameNumber !== frameNumber) {
             this.frameNumber = frameNumber;
             this.notifyListeners({ frameChanged: true });
-            //console.log(`Frame updated to: ${this.frameNumber}`); // Added logging
+            console.log(`Frame updated to: ${this.frameNumber}`);
         }
 
         this.previousFrameNumber = frameNumber;
     }
 
     /**
-     * Registers a callback to be invoked on frame changes.
-     * @param {function} callback - The callback function.
+     * Registers a callback to be invoked on frame changes or cycle completions.
+     * @param {function} callback - The callback function receiving (frameNumber, event).
+     * @returns {function} A function to remove the registered listener.
      */
     onFrameChange(callback) {
+        if (typeof callback !== 'function') {
+            console.error('onFrameChange requires a function as a callback');
+            return;
+        }
         this.listeners.push(callback);
+        // Return a removal function for convenience
+        return () => {
+            this.listeners = this.listeners.filter(listener => listener !== callback);
+        };
     }
 
     /**
@@ -103,7 +136,13 @@ export class IndexController {
      * @param {object} event - The event data.
      */
     notifyListeners(event = {}) {
-        this.listeners.forEach(callback => callback(this.frameNumber, event));
+        this.listeners.forEach(callback => {
+            try {
+                callback(this.frameNumber, event);
+            } catch (err) {
+                console.error('Error in listener callback:', err);
+            }
+        });
     }
 
     /**
@@ -118,38 +157,45 @@ export class IndexController {
      * Pauses the frame updates.
      */
     pause() {
-        this.paused = true;
-        this.notifyListeners({ paused: true });
+        if (!this.paused) {
+            this.paused = true;
+            this.notifyListeners({ paused: true });
+            console.log('Animation paused.');
+        }
     }
 
     /**
      * Unpauses the frame updates.
      */
     unpause() {
-        this.paused = false;
-        // Reset startTime to account for the paused duration
-        this.startTime = performance.now() - (this.frameNumber * this.frameDuration);
-        this.notifyListeners({ unpaused: true });
+        if (this.paused) {
+            const now = performance.now();
+            const pausedDuration = now - this.lastUpdateTime;
+            this.elapsedTime += pausedDuration;
+            this.lastUpdateTime = now;
+            this.paused = false;
+            this.notifyListeners({ unpaused: true });
+            console.log('Animation unpaused.');
+        }
     }
 
     /**
-     * Resets the frame index and start time.
+     * Resets the frame index, elapsed time, and cycle count.
      */
     reset() {
         this.frameNumber = 0;
-        this.startTime = performance.now();
-        this.currentCycle = 0; // Reset cycle count
-        this.notifyListeners({ frameChanged: true, reset: true });
-    }
-    /**
-     * Cancels any scheduled pause and reset.
-     */
-    cancelScheduledPause() {
-        if (!this.isScheduling) return; // Nothing to cancel
-
-        this.isScheduling = false;
-        this.pauseAfterCycles = 0;
+        this.elapsedTime = 0;
+        this.lastUpdateTime = performance.now();
         this.currentCycle = 0;
-        this.notifyListeners({ cancelScheduledPause: true });
+        this.notifyListeners({ frameChanged: true, reset: true });
+        console.log('Animation reset.');
+    }
+
+    /**
+     * Clears all registered listeners.
+     */
+    clearListeners() {
+        this.listeners = [];
+        console.log('All listeners have been cleared.');
     }
 }
