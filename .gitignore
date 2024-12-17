@@ -174,18 +174,12 @@ cython_debug/
 .idea/codeStyles/
 .idea
 # Project exclude paths
-.generated_img_lists
 *.old
-/node_modules/
-/generated_img_lists/
-/dist/
-/dist/*
+node_modules/
 generated_img_lists/
-
-folders_processed/*.*
+dist/
 folders_processed/
-
-
+#json and text
 float_images.json
 float_images.json.gz
 main_images.json
