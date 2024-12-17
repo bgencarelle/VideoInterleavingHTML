@@ -2,7 +2,7 @@
 * {
     margin: 0;
     padding: 0;
-    box-sizing: border-box;
+    box-sizing:content-box;
 }
 
 /* Ensure the body and html take up the full viewport */
@@ -13,6 +13,7 @@ body, html {
     background-color: #000000FF; /* Background color for the page */
     font-family: Arial, sans-serif;
     display: flex; /* Ensures child elements can stretch properly */
+
 }
 
 /* Style the image container to cover the entire viewport */
@@ -20,22 +21,24 @@ body, html {
     position: relative;
     width: 100%; /* Matches the full width of the viewport */
     height: 100%; /* Matches the full height of the viewport */
-    background-color: rgba(2, 2, 2, 0); /* Equivalent to your previous canvas background */
+    background-color: rgba(13, 5, 99, 0); /* Equivalent to your previous canvas background */
     isolation: isolate; /* Prevent blending with other elements */
     overflow: hidden; /* Ensures no unexpected scrollbars */
     display: flex; /* Ensures internal resizing consistency */
+    cursor: none; /* Hides the cursor */
+
 }
 
 /* Style for each image layer */
 .layer {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     object-fit: contain; /* Adjust to maintain aspect ratio without cropping */
     transition: none;
-    image-rendering: auto; /* Enhances edge sharpness */
+    image-rendering: high-quality; /* Enhances edge sharpness */
     transform: translateZ(0); /* Forces GPU rendering */
 
 }
@@ -49,6 +52,6 @@ body, html {
 /* Foreground image layer */
 .fg {
     z-index: 2;
-    opacity: 1.0; /* Full opacity; adjust as needed for alpha blending */
+    opacity:1.0; /* Full opacity; adjust as needed for alpha blending */
     mix-blend-mode: normal;
 }

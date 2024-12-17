@@ -1,4 +1,6 @@
-// utils.js
+// js/utils.js
+
+import { FLOAT_IMAGES_JSON, MAIN_IMAGES_JSON } from './config.js';
 
 let overlayTimeout = null;
 
@@ -6,11 +8,6 @@ export function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/**
- * Displays an overlay message on the screen.
- * @param {string} message - The message to display.
- * @param {string} position - The position of the overlay ('top-right' or 'bottom-right').
- */
 export function showModeOverlay(message, position = 'top-right') {
     let overlay = document.getElementById('mode-overlay');
     if (!overlay) {
@@ -32,22 +29,159 @@ export function showModeOverlay(message, position = 'top-right') {
     if (position === 'bottom-right') {
         overlay.style.bottom = '10px';
         overlay.style.right = '10px';
-        overlay.style.top = 'auto'; // Override top if previously set
+        overlay.style.top = 'auto';
     } else {
-        // Default to top-right
         overlay.style.top = '10px';
         overlay.style.right = '10px';
-        overlay.style.bottom = 'auto'; // Override bottom if previously set
+        overlay.style.bottom = 'auto';
     }
 
     overlay.textContent = message;
     overlay.style.opacity = '1';
 
-    // Clear previous timeout if any
     if (overlayTimeout) clearTimeout(overlayTimeout);
 
-    // Set a timeout to fade out after 1 second
     overlayTimeout = setTimeout(() => {
         overlay.style.opacity = '0';
     }, 1000);
+}
+
+/**
+ * Adds keyboard event listeners for controlling the application.
+ * @param {Object} indexController - The IndexController instance.
+ * @param {Function} showModeOverlay - Function to display mode overlay.
+ */
+export function addKeyboardListeners(indexController, showModeOverlay) {
+    let paused = false;
+
+    window.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        if (key === 'p') {
+            if (!paused) {
+                indexController.pause();
+                paused = true;
+                showModeOverlay('Paused');
+            } else {
+                indexController.unpause();
+                paused = false;
+                showModeOverlay('Unpaused');
+            }
+        } else if (key === 's') {
+            showModeOverlay('Restart', 'bottom-right');
+            indexController.reset();
+        }
+    });
+}
+
+/**
+ * Adds fullscreen toggle to a specified element.
+ * @param {HTMLElement} element - The target element for fullscreen toggle.
+ */
+export function addFullscreenToggle(element) {
+    if (element) {
+        element.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                element.requestFullscreen().catch(err => {
+                    console.error(`Error enabling fullscreen: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen().catch(err => {
+                    console.error(`Error exiting fullscreen: ${err.message}`);
+                });
+            }
+        });
+    } else {
+        console.error('Target element not found for fullscreen toggle.');
+    }
+}
+
+/**
+ * Preloaded JSON data
+ */
+let preloadedData = {};
+
+/**
+ * Preloads JSON files into memory.
+ */
+// Fallback preloadedData constant
+const DEFAULT_PRELOADED_DATA = {
+    mainData: { folders: [] },
+    floatData: { folders: [] },
+};
+
+export async function preloadJSON() {
+    try {
+        const mainFetch = fetch(MAIN_IMAGES_JSON);
+        const floatFetch = fetch(FLOAT_IMAGES_JSON);
+
+        const [mainResponse, floatResponse] = await Promise.all([mainFetch, floatFetch]);
+
+        if (!mainResponse.ok || !floatResponse.ok) {
+            throw new Error('Failed to preload JSON files');
+        }
+
+        preloadedData.mainData = await mainResponse.json();
+        preloadedData.floatData = await floatResponse.json();
+    } catch (error) {
+        handlePreloadError(error);
+    }
+}
+
+/**
+ * Handles errors during preloading, logs the error, and assigns default data.
+ * @param {Error} error - The error object caught during preloading.
+ */
+function handlePreloadError(error) {
+    console.error('Error preloading JSON:', error);
+    preloadedData = { ...DEFAULT_PRELOADED_DATA };
+}
+
+/**
+ * Fetches preloaded JSON data based on type.
+ * @param {string} type - The type of JSON data ('main' or 'float').
+ * @returns {Object} - The requested JSON data.
+ */
+export function fetchPreloadedJSON(type) {
+    if (type === 'main') {
+        return preloadedData.mainData || { folders: [] };
+    } else if (type === 'float') {
+        return preloadedData.floatData || { folders: [] };
+    } else {
+        console.error(`Unknown JSON type: ${type}`);
+        return { folders: [] };
+    }
+}
+
+/**
+ * Sets up keyboard callbacks for mode changes and external folder adjustments.
+ * @param {FolderController} controller - The FolderController instance.
+ * @returns {Function} - The bound keydown handler for cleanup.
+ */
+export function setupKeyboardCallbacksFolder(controller) {
+    const boundKeydownHandler = (e) => {
+        const key = e.key.toLowerCase();
+        if (key === 'r') { controller.setMode('RANDOM'); return; }
+        if (key === 'i') { controller.setMode('INCREMENT'); return; }
+        if (key === 'e') { controller.setMode('EXTERNAL'); return; }
+
+        if (controller.mode === 'EXTERNAL') {
+            let mainDelta = 0;
+            let floatDelta = 0;
+
+            switch (key) {
+                case '1': mainDelta = 1; break;
+                case '2': mainDelta = -1; break;
+                case '3': floatDelta = 1; break;
+                case '4': floatDelta = -1; break;
+                default: return;
+            }
+
+            controller.queueExternalChange({ mainDelta, floatDelta });
+        }
+    };
+
+    document.addEventListener('keydown', boundKeydownHandler);
+    return () => {
+        document.removeEventListener('keydown', boundKeydownHandler);
+    };
 }

@@ -1,46 +1,35 @@
 // js/loadImageHttp.js
 
 /**
- * Caches loaded Image elements to prevent redundant loading.
+ * Caches loaded Image promise objects to prevent redundant loading.
  */
 const imageCache = new Map();
 
 /**
- * Loads an image using an HTMLImageElement.
- * Optimized for performance without retry logic.
- * @param {string} path - The HTTP path to the image.
- * @returns {Promise<HTMLImageElement|null>} A promise resolving to the loaded Image or null if failed.
+ * Loads an image using a standard HTMLImageElement and relies on browser caching.
+ * Using `img.decoding = 'async'` and no blob conversions to reduce CPU usage.
+ * @param {string} path
+ * @returns {Promise<HTMLImageElement|null>}
  */
 export function loadImage(path) {
-    // Return cached Image if available
+    // If we’ve already started loading this image, return the existing promise
     if (imageCache.has(path)) {
         return imageCache.get(path);
     }
 
-    // Create a new Promise for image loading
     const imagePromise = new Promise((resolve) => {
         const img = new Image();
+        // Allow async decoding
+        img.decoding = 'async';
+        // img.loading = 'lazy'; // Might help if supported, but not all browsers handle it for JS-created images.
 
-        // Optional: Set crossOrigin if needed
-        // img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
 
-        img.onload = () => {
-            // Image loaded successfully
-            resolve(img);
-        };
-
-        img.onerror = (error) => {
-            // Handle loading errors
-            console.error(`Failed to load image: ${path}`, error);
-            resolve(null); // Resolve with null to indicate failure
-        };
-
-        // Start loading the image
+        // Setting the src triggers the load. Browser caching will minimize network I/O.
         img.src = path;
     });
 
-    // Cache the Promise to prevent duplicate loads
     imageCache.set(path, imagePromise);
-
     return imagePromise;
 }
