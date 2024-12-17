@@ -54,16 +54,16 @@ def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Pat
             groups[file_count].append(folder_data)
 
     def write_json(group, file_name_format):
-        for file_count, sub_group in group.items():
+        for file_count_write, sub_group in group.items():
             # Sort the group based on numeric prefix or folder name
             sub_group_sorted = sorted(sub_group, key=lambda x: (
                 int(x["folder_rel"].split('_')[0]) if x["folder_rel"].split('_')[0].isdigit() else float('inf'),
                 x["folder_rel"]
             ))
             # Assign indices
-            for idx, folder_data in enumerate(sub_group_sorted, 0):
-                folder_data["index"] = idx
-            json_filename = file_name_format.format(file_count)
+            for idx, folder_data_write in enumerate(sub_group_sorted, 0):
+                folder_data_write["index"] = idx
+            json_filename = file_name_format.format(file_count_write)
             json_path = processed_dir / json_filename
             with json_path.open('w', encoding='utf-8') as f:
                 json.dump({"folders": sub_group_sorted}, f, indent=4)  # Wrap list in "folders" key

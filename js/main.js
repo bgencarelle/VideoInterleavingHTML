@@ -1,6 +1,5 @@
 // js/main.js
 
-import { canvas, initializeCanvas2D } from './canvas.js';
 import { startAnimation } from './animation.js';
 import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES, FLOAT_IMAGES_JSON, MAIN_IMAGES_JSON } from './config.js';
 import { ImageCache } from './imageCache.js';
@@ -52,26 +51,33 @@ export function fetchPreloadedJSON(type) {
 }
 
 /**
- * Toggles fullscreen mode for the canvas when clicked.
+ * Toggles fullscreen mode for the image container when clicked.
  */
-canvas.addEventListener('click', () => {
-    if (!document.fullscreenElement) {
-        canvas.requestFullscreen().catch(err => {
-            console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
-        });
-    } else {
-        document.exitFullscreen().catch(err => {
-            console.error(`Error attempting to exit fullscreen mode: ${err.message} (${err.name})`);
-        });
-    }
-});
+const imageContainer = document.getElementById('image-container');
+
+if (imageContainer) {
+    imageContainer.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            imageContainer.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+            });
+        } else {
+            document.exitFullscreen().catch(err => {
+                console.error(`Error attempting to exit fullscreen mode: ${err.message} (${err.name})`);
+            });
+        }
+    });
+} else {
+    console.error('Image container #image-container not found in the DOM.');
+}
 
 /**
  * Initializes and starts the application.
  */
 (async function initializeApp() {
     try {
-        initializeCanvas2D();
+        // Removed initializeCanvas2D as we're not using the canvas
+
         // Preload JSON data into memory
         await preloadJSON();
 
@@ -93,6 +99,7 @@ canvas.addEventListener('click', () => {
 
         // Initialize ImageCache with cycleLength for wrap-around
         const imageCache = new ImageCache(BUFFER_SIZE, {
+            maxConcurrency: MAX_CONCURRENT_FETCHES,
             cycleLength: cycleLength,
             indexController: indexController,
             folderController: folderController,
@@ -109,8 +116,6 @@ canvas.addEventListener('click', () => {
         // Pause state flag
         let paused = false;
 
-        // Scheduling state for L key
-        let isLScheduling = false;
 
         // Keyboard event listener
         window.addEventListener('keydown', (event) => {
@@ -133,18 +138,6 @@ canvas.addEventListener('click', () => {
                 // Reset the index to 0 and reset the time
                 indexController.reset();
 
-            } else if (key === 'l') {
-                if (!isLScheduling) {
-                    // Start scheduling pause + reset after 2 cycles
-                    indexController.schedulePauseAfterCycles(2);
-                    isLScheduling = true;
-                    showModeOverlay('Scheduling Pause & Reset after 2 cycles', 'bottom-right');
-                } else {
-                    // Cancel any scheduled pause + reset
-                    indexController.cancelScheduledPause();
-                    isLScheduling = false;
-                    showModeOverlay('Cancelled Scheduled Pause & Reset', 'bottom-right');
-                }
             }
         });
 
@@ -153,17 +146,6 @@ canvas.addEventListener('click', () => {
             if (event.cycleCompleted) {
                 // Display current cycle number
                 showModeOverlay(`CYCLE #${event.cycleNumber}`, 'bottom-right');
-            }
-            if (event.schedulingPause) {
-                showModeOverlay(`Pause & Reset scheduled after ${event.cycles} cycles`, 'bottom-right');
-            }
-            if (event.cancelScheduledPause) {
-                showModeOverlay('Scheduled Pause & Reset cancelled', 'bottom-right');
-            }
-            if (event.scheduledPause) {
-                showModeOverlay('Paused and Reset', 'bottom-right');
-                paused = true; // Since controller is paused
-                isLScheduling = false; // Reset scheduling flag
             }
             if (event.paused) {
                 // Additional handling if needed

@@ -1,6 +1,6 @@
 // js/imageCache.js
 import { MAX_CONCURRENT_FETCHES } from './config.js';
-import { loadImage } from './imageLoader.js';
+import { loadImage } from './loadImageHttp.js'; // Ensure correct import path
 
 /**
  * ImageCache is responsible for caching image pairs (foreground/background) based on frame numbers.
@@ -19,7 +19,7 @@ export class ImageCache {
      */
     constructor(bufferSize, options = {}) {
         this.bufferSize = bufferSize;
-        this.cache = new Map(); // Map<frameNumber, { fgImg, bgImg }>
+        this.cache = new Map(); // Map<frameNumber, { fgImgSrc, bgImgSrc }>
         this.cycleLength = options.cycleLength || 1; // Use provided cycleLength
         this.indexController = options.indexController;
         this.folderController = options.folderController;
@@ -30,20 +30,22 @@ export class ImageCache {
 
     /**
      * Stores an image pair in the cache.
+     * @param {number} frameNumber - The frame number.
+     * @param {object} item - The image pair object containing fgImgSrc and bgImgSrc.
      */
     set(frameNumber, item) {
         this.cache.set(frameNumber, item);
-        // console.log(`Cached images at frame: ${frameNumber}`);
-
         // Trim the cache to maintain buffer size
         this.trimCache();
     }
 
     /**
      * Retrieves an image pair from the cache based on the frame number.
+     * @param {number} frameNumber - The frame number.
+     * @returns {object|null} The image pair object or null if not found.
      */
     get(frameNumber) {
-        return this.cache.get(frameNumber);
+        return this.cache.get(frameNumber) || null;
     }
 
     /**
@@ -54,13 +56,6 @@ export class ImageCache {
     has(frameNumber) {
         return this.cache.has(frameNumber);
     }
-
-    /**
-     * Calculates how many frames are remaining in the buffer relative to the current frame.
-     * @param {number} currentFrame - The current frame number.
-     * @returns {number} Number of frames remaining in the buffer.
-     */
-    // Removed getFramesRemaining if unused
 
     /**
      * Handles frame rendering by updating the cache based on the current frame number.
@@ -141,15 +136,17 @@ export class ImageCache {
         }
 
         try {
-            // Load both images as HTMLImageElement with retry logic
+            // Load both images as HTMLImageElement
             const [bgImg, fgImg] = await Promise.all([
-                loadImage(mainImage, 3, 10), // 3 retries with 1-second delay
-                loadImage(floatImage, 3, 10)
+                loadImage(mainImage), // Background Image
+                loadImage(floatImage) // Foreground Image
             ]);
 
-            if (fgImg && bgImg) {
-                this.set(frameNumber, { fgImg, bgImg });
-                //console.log(`Preloaded images for frame: ${frameNumber}`);
+            if (bgImg && fgImg) {
+                // Store the image sources (URLs) in the cache
+                this.set(frameNumber, { fgImgSrc: fgImg.src, bgImgSrc: bgImg.src });
+                // Optional: Log caching success
+                // console.log(`Preloaded images for frame: ${frameNumber}`);
             } else {
                 console.warn(`Skipping preload for invalid images at frame: ${frameNumber}`);
             }
@@ -173,7 +170,16 @@ export class ImageCache {
             if (!validFrames.has(frameNumber)) {
                 this.cache.delete(frameNumber);
                 // Optionally, you can also nullify references to help garbage collection
+                // Example: this.cache.set(frameNumber, null);
             }
         }
+    }
+
+    /**
+     * Preloads initial images starting from the current frame.
+     * @param {number} initialFrame - The initial frame number to start preloading from.
+     */
+    async preloadInitialImages(initialFrame) {
+        await this.preloadImages(initialFrame);
     }
 }

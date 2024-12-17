@@ -1,7 +1,7 @@
 // js/animation.js
 
 import { FRAME_DURATION } from './config.js';
-import { renderImages } from './canvas.js';
+// Removed import for renderImages as we're using CSS-based layering
 
 /**
  * Creates the render loop that updates and renders images based on the current frame number.
@@ -11,8 +11,16 @@ import { renderImages } from './canvas.js';
  */
 function createRenderLoop(indexController, imageCache) {
     let lastFrameTime = performance.now();
-    const desiredFPS = 60; // Adjust as needed
-    const frameInterval = 1000 / desiredFPS;
+    const frameInterval = FRAME_DURATION;
+
+    // Get references to the image elements
+    const bgImageElement = document.getElementById('bg-image');
+    const fgImageElement = document.getElementById('fg-image');
+
+    if (!bgImageElement || !fgImageElement) {
+        console.error('Image elements #bg-image and/or #fg-image not found in the DOM.');
+        return () => {}; // Return an empty function to prevent errors
+    }
 
     return function renderLoop(timestamp) {
         try {
@@ -26,17 +34,26 @@ function createRenderLoop(indexController, imageCache) {
 
                 const currentFrameNumber = indexController.getCurrentFrameNumber();
 
-                // Fetch the latest image from the buffer
+                // Fetch the latest image from the cache
                 const imagePair = imageCache.get(currentFrameNumber);
+                //console.log(`Frame ${currentFrameNumber} image pair:`, imagePair);
 
                 if (imagePair) {
-                    const { fgImg, bgImg } = imagePair;
+                    const { fgImgSrc, bgImgSrc } = imagePair;
 
-                    // Render images
-                    renderImages(fgImg, bgImg);
+                    // Update background image if the source has changed
+                    if (bgImageElement.src !== bgImgSrc) {
+                        bgImageElement.src = bgImgSrc;
+                    }
+
+                    // Update foreground image if the source has changed
+                    if (fgImageElement.src !== fgImgSrc) {
+                        fgImageElement.src = fgImgSrc;
+                    }
                 } else {
                     console.warn(`No image available for frame ${currentFrameNumber}`);
                 }
+
 
                 // Notify ImageCache that the current frame has been rendered
                 imageCache.handleFrameRender(currentFrameNumber).catch(error => {
@@ -65,3 +82,4 @@ export function startAnimation(indexController, imageCache) {
     const renderLoop = createRenderLoop(indexController, imageCache);
     requestAnimationFrame(renderLoop);
 }
+

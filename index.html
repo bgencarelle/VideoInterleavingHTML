@@ -1,27 +1,19 @@
-<!-- Updated HTML for Canvas2D -->
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fullscreen Image Viewer - Canvas2D</title>
-
-    <!-- Link to your CSS file -->
-    <link rel="stylesheet" href="./css/styles.css">
-
-    <!-- Preload critical assets if needed -->
-    <link rel="preload" href="./js/main.js" as="script" crossorigin="anonymous">
-    <link rel="modulepreload" href="./js/main.js">
+    <title>Image Layering App</title>
+    <link rel="preload" as="style" href="css/styles.css" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
+    <link rel="preload" as="script" href="js/main.js">
 </head>
-
 <body>
-    <!-- Canvas for rendering images -->
-    <canvas id="displayCanvas" aria-label="Image Viewer Canvas"></canvas>
-
-    <!-- Load your JavaScript file -->
-    <script type="module" src="./js/main.js" crossorigin="anonymous"></script>
+    <div id="image-container" class="image-container">
+        <img id="bg-image" class="layer bg" src="" alt="Background Image" loading="lazy">
+        <img id="fg-image" class="layer fg" src="" alt="Foreground Image" loading="lazy">
+    </div>
+    <script type="module" src="js/main.js"></script>
 </body>
-
 </html>
