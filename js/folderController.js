@@ -26,6 +26,11 @@ export class FolderController {
         this.rand_mult = getRandomInt(1, 9);
         this.rand_start = getRandomInt(FPS, 5 * FPS);
 
+        // Precompute random sequences
+        this.mainRandomSequence = [];
+        this.floatRandomSequence = [];
+        this.precomputeRandomSequences();
+
         // Debounce for external changes
         this.pendingExternalChange = null;
         this.debounceTimer = null;
@@ -36,6 +41,28 @@ export class FolderController {
 
         // Setup controls
         this.setupExternalControlHooks();
+    }
+
+    /**
+     * Precomputes random sequences for main and float folders (2x cycle).
+     */
+    precomputeRandomSequences() {
+        this.mainRandomSequence = this.generateRandomSequence(this.mainFolders.length, 2);
+        this.floatRandomSequence = this.generateRandomSequence(this.floatFolders.length, 2);
+    }
+
+    /**
+     * Generates a random sequence of folder indices.
+     * @param {number} folderCount - Number of folders.
+     * @param {number} multiplier - How many times to repeat the cycle.
+     * @returns {Array<number>} The generated random sequence.
+     */
+    generateRandomSequence(folderCount, multiplier) {
+        const sequence = [];
+        for (let i = 0; i < folderCount * multiplier; i++) {
+            sequence.push(getRandomInt(0, folderCount - 1));
+        }
+        return sequence;
     }
 
     /**
@@ -156,6 +183,8 @@ export class FolderController {
             if (this.mode === 'RANDOM') {
                 this.rand_mult = getRandomInt(1, 9);
                 this.rand_start = getRandomInt(FPS, 5 * FPS);
+                // Reset random sequences
+                this.precomputeRandomSequences();
             }
         }
     }
@@ -199,17 +228,43 @@ export class FolderController {
             this.rand_start = getRandomInt(FPS, 5 * FPS);
 
             if (frameNumber % ((FPS + 1) * this.rand_mult) === 0) {
-                this.currentFloatFolder = getRandomInt(0, this.floatFolders.length - 1);
+                this.currentFloatFolder = this.getNextRandomFloatFolder();
                 this.rand_mult = getRandomInt(1, 12);
                 this.notifyListeners({ folderChanged: true });
             }
 
             if (frameNumber % (2 + FPS * this.rand_mult) === 0) {
-                this.currentMainFolder = getRandomInt(0, this.mainFolders.length - 1);
+                this.currentMainFolder = this.getNextRandomMainFolder();
                 this.rand_mult = getRandomInt(1, 9);
                 this.notifyListeners({ folderChanged: true });
             }
         }
+    }
+
+    /**
+     * Retrieves the next random main folder from the precomputed sequence.
+     * Recomputes the sequence if necessary.
+     * @returns {number} The next main folder index.
+     */
+    getNextRandomMainFolder() {
+        if (this.mainRandomSequence.length === 0) {
+            // Recompute if sequence is empty
+            this.precomputeRandomSequences();
+        }
+        return this.mainRandomSequence.shift();
+    }
+
+    /**
+     * Retrieves the next random float folder from the precomputed sequence.
+     * Recomputes the sequence if necessary.
+     * @returns {number} The next float folder index.
+     */
+    getNextRandomFloatFolder() {
+        if (this.floatRandomSequence.length === 0) {
+            // Recompute if sequence is empty
+            this.precomputeRandomSequences();
+        }
+        return this.floatRandomSequence.shift();
     }
 
     /**

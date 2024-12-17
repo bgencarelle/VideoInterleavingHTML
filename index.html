@@ -1,18 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Layering App</title>
+    <title>image layering app</title>
+
+    <!-- preload and load css -->
     <link rel="preload" as="style" href="css/styles.css" onload="this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
+    <noscript>
+        <link rel="stylesheet" href="css/styles.css">
+    </noscript>
+    <!-- minified version for production -->
+    <!-- <link rel="preload" as="style" href="dist/css/styles.min.css" onload="this.rel='stylesheet'"> -->
+    <!-- <noscript><link rel="stylesheet" href="dist/css/styles.min.css"></noscript> -->
+
+    <!-- preload javascript -->
     <link rel="preload" as="script" href="js/main.js">
+    <!-- minified version for production -->
+    <!-- <link rel="preload" as="script" href="dist/js/main.min.js"> -->
 </head>
 <body>
     <div id="image-container" class="image-container">
-        <img id="bg-image" class="layer bg" src="" alt="Background Image" loading="lazy">
-        <img id="fg-image" class="layer fg" src="" alt="Foreground Image" loading="lazy">
+        <img id="bg-image" class="layer bg" src="" alt="background image" loading="lazy">
+        <img id="fg-image" class="layer fg" src="" alt="foreground image" loading="lazy">
     </div>
+
+    <!-- main javascript -->
     <script type="module" src="js/main.js"></script>
+    <!-- minified version for production -->
+    <!-- <script type="module" src="dist/js/main.min.js"></script> -->
 </body>
 </html>

@@ -108,7 +108,7 @@ export class IndexController {
         if (this.frameNumber !== frameNumber) {
             this.frameNumber = frameNumber;
             this.notifyListeners({ frameChanged: true });
-            console.log(`Frame updated to: ${this.frameNumber}`);
+            //console.log(`Frame updated to: ${this.frameNumber}`);
         }
 
         this.previousFrameNumber = frameNumber;
