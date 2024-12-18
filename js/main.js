@@ -1,5 +1,5 @@
 import { startAnimation } from './animation.js';
-import { BUFFER_SIZE, MAX_CONCURRENT_FETCHES} from './config.js';
+import { IPS, BUFFER_SIZE, MAX_CONCURRENT_FETCHES, PINGPONG_MODE} from './config.js';
 import { ImageCache } from './imageCache.js';
 import { IndexController } from './indexController.js';
 import { FolderController } from './folderController.js';
@@ -15,7 +15,7 @@ import { showModeOverlay, addKeyboardListeners, addFullscreenToggle, fetchPreloa
         const floatData = fetchPreloadedJSON('float');
 
         const maxIndex = mainData.folders[0].image_list.length;
-        const indexController = new IndexController();
+        const indexController = new IndexController(IPS,PINGPONG_MODE);
         const folderController = new FolderController(mainData.folders, floatData.folders);
 
 

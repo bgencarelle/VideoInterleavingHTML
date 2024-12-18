@@ -80,9 +80,7 @@ export class IndexController {
         const totalFrames = Math.floor(this.elapsedTime / this.frameDuration);
 
         // Calculate frameNumber based on PingPong mode
-        const frameNumber = PINGPONG_MODE
-            ? totalFrames % this.cycleLength
-            : totalFrames % this.cycleLength;
+        const frameNumber = totalFrames % this.cycleLength;
 
         // Detect cycle completion
         let cycleCompleted = false;
@@ -114,22 +112,6 @@ export class IndexController {
         this.previousFrameNumber = frameNumber;
     }
 
-    /**
-     * Registers a callback to be invoked on frame changes or cycle completions.
-     * @param {function} callback - The callback function receiving (frameNumber, event).
-     * @returns {function} A function to remove the registered listener.
-     */
-    onFrameChange(callback) {
-        if (typeof callback !== 'function') {
-            console.error('onFrameChange requires a function as a callback');
-            return;
-        }
-        this.listeners.push(callback);
-        // Return a removal function for convenience
-        return () => {
-            this.listeners = this.listeners.filter(listener => listener !== callback);
-        };
-    }
 
     /**
      * Notifies all registered listeners of an event.
@@ -191,11 +173,4 @@ export class IndexController {
         console.log('Animation reset.');
     }
 
-    /**
-     * Clears all registered listeners.
-     */
-    clearListeners() {
-        this.listeners = [];
-        console.log('All listeners have been cleared.');
-    }
 }

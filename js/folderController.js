@@ -14,7 +14,7 @@ export class FolderController {
         this.listeners = [];
         this.pendingExternalChange = null;
         this.debounceTimer = null;
-        this.debounceDelay = 200;
+        this.debounceDelay = 30;
 
         // Initialize RandomModeCalculator
         this.randomModeCalc = new RandomModeCalculator(
@@ -22,9 +22,6 @@ export class FolderController {
             this.floatFolders,
             this.updateFolderState.bind(this)
         );
-
-        // Setup keyboard callbacks using utils.js
-        this.boundKeydownHandler = setupKeyboardCallbacksFolder(this);
     }
 
     /**
@@ -175,16 +172,6 @@ export class FolderController {
     }
 
     /**
-     * Registers a callback to be invoked on folder changes.
-     * @param {Function} callback - The callback function.
-     */
-    onFolderChange(callback) {
-        if (typeof callback === 'function') {
-            this.listeners.push(callback);
-        }
-    }
-
-    /**
      * Notifies all registered listeners with the provided event.
      * @param {Object} event - The event object.
      */
@@ -192,39 +179,4 @@ export class FolderController {
         this.listeners.forEach((callback) => callback(event));
     }
 
-    /**
-     * Retrieves the maximum index among all main and float folders.
-     * @returns {number} - The maximum index.
-     */
-    getMaxIndex() {
-        let maxMain = 0;
-        let maxFloat = 0;
-        this.mainFolders.forEach((folder) => {
-            if (folder.image_list.length > maxMain) {
-                maxMain = folder.image_list.length;
-            }
-        });
-        this.floatFolders.forEach((folder) => {
-            if (folder.image_list.length > maxFloat) {
-                maxFloat = folder.image_list.length;
-            }
-        });
-        const maxIndex = Math.max(maxMain, maxFloat);
-        console.log(`getMaxIndex: maxMain=${maxMain}, maxFloat=${maxFloat}, maxIndex=${maxIndex}`);
-        return maxIndex;
-    }
-
-    /**
-     * Cleans up event listeners and timers.
-     */
-    destroy() {
-        if (this.boundKeydownHandler) {
-            this.boundKeydownHandler();
-        }
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = null;
-        }
-        this.listeners = [];
-    }
 }
