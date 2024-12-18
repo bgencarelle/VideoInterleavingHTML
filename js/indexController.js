@@ -1,6 +1,6 @@
 // js/indexController.js
 
-import { IPS, PINGPONG_MODE } from './config.js';
+import {PINGPONG_MODE, INDEX_UPDATE_DURATION} from './config.js';
 
 /**
  * IndexController manages the progression of frames and cycles within the animation.
@@ -19,7 +19,7 @@ export class IndexController {
         this.listeners = [];
 
         // Duration per frame in milliseconds
-        this.frameDuration = 1000.0 / IPS;
+        this.frameDuration = INDEX_UPDATE_DURATION;
 
         // Reference start time for animation
         this.startTime = performance.now();
@@ -36,8 +36,6 @@ export class IndexController {
         // Previous frame number to detect cycle completions
         this.previousFrameNumber = 0;
 
-        // Current cycle count
-        this.currentCycle = 0;
     }
 
     /**
@@ -82,30 +80,20 @@ export class IndexController {
         // Calculate frameNumber based on PingPong mode
         const frameNumber = totalFrames % this.cycleLength;
 
-        // Detect cycle completion
-        let cycleCompleted = false;
         if (PINGPONG_MODE) {
             // In PingPong mode, a full cycle is forward and backward
             // Detect if frameNumber is 0 and previous was last frame
             if (frameNumber === 0 && this.previousFrameNumber === (this.cycleLength - 1)) {
-                cycleCompleted = true;
             }
         } else {
             // In non-PingPong mode, a full cycle is from 0 to maxIndex inclusive
             if (frameNumber === 0 && this.previousFrameNumber === (this.cycleLength - 1)) {
-                cycleCompleted = true;
             }
         }
-
-        if (cycleCompleted) {
-            this.currentCycle += 1;
-            this.notifyListeners({ cycleCompleted: true, cycleNumber: this.currentCycle });
-        }
-
         // Determine if frameNumber has changed
         if (this.frameNumber !== frameNumber) {
             this.frameNumber = frameNumber;
-            this.notifyListeners({ frameChanged: true });
+            //this.notifyListeners({frameChanged: true});
             //console.log(`Frame updated to: ${this.frameNumber}`);
         }
 
@@ -141,7 +129,7 @@ export class IndexController {
     pause() {
         if (!this.paused) {
             this.paused = true;
-            this.notifyListeners({ paused: true });
+            this.notifyListeners({paused: true});
             console.log('Animation paused.');
         }
     }
@@ -156,7 +144,7 @@ export class IndexController {
             this.elapsedTime += pausedDuration;
             this.lastUpdateTime = now;
             this.paused = false;
-            this.notifyListeners({ unpaused: true });
+            this.notifyListeners({unpaused: true});
             console.log('Animation unpaused.');
         }
     }
@@ -168,8 +156,7 @@ export class IndexController {
         this.frameNumber = 0;
         this.elapsedTime = 0;
         this.lastUpdateTime = performance.now();
-        this.currentCycle = 0;
-        this.notifyListeners({ frameChanged: true, reset: true });
+        this.notifyListeners({frameChanged: true, reset: true});
         console.log('Animation reset.');
     }
 

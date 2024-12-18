@@ -1,25 +1,26 @@
 # process_files.py
 import json
 import sys
-from itertools import zip_longest
 from pathlib import Path
 import re
-# noinspection SpellCheckingInspection
-import gzip  # Imported for gzipping JSON files
+import gzip
 import get_folders_list  # Ensure this imports correctly
+from multiprocessing import Pool
+
+# Pre-compile regex patterns for efficiency
+FLOAT_PATTERN = re.compile(r'^float_folders_(\d+)\.json$')
+MAIN_PATTERN = re.compile(r'^main_folders_(\d+)\.json$')
+IMAGE_PATTERN = re.compile(r'^(.*?)(\d{4,})(\.\w+)$')
 
 
 def find_default_jsons(processed_dir):
-    float_pattern = re.compile(r'^float_folders_(\d+)\.json$')
-    main_pattern = re.compile(r'^main_folders_(\d+)\.json$')
-
     float_files = {}
     main_files = {}
 
     for file in processed_dir.iterdir():
         if file.is_file():
-            float_match = float_pattern.match(file.name)
-            main_match = main_pattern.match(file.name)
+            float_match = FLOAT_PATTERN.match(file.name)
+            main_match = MAIN_PATTERN.match(file.name)
 
             if float_match:
                 float_files[float_match.group(1)] = file
@@ -50,15 +51,12 @@ def choose_file(processed_dir):
         print(f"{i + 1}: {file.name}")
 
     pairs = []
-    float_pattern = re.compile(r'^float_folders_(\d+)\.json$')
-    main_pattern = re.compile(r'^main_folders_(\d+)\.json$')
-
     float_files = {}
     main_files = {}
 
     for file in available_files:
-        float_match = float_pattern.match(file.name)
-        main_match = main_pattern.match(file.name)
+        float_match = FLOAT_PATTERN.match(file.name)
+        main_match = MAIN_PATTERN.match(file.name)
 
         if float_match:
             float_files[float_match.group(1)] = file
@@ -79,9 +77,9 @@ def choose_file(processed_dir):
         "No matching main and float JSON pairs found. Do you want to process all available JSON files separately? (y/n): ").strip().lower()
     if response == "y":
         for file in available_files:
-            if float_pattern.match(file.name):
+            if FLOAT_PATTERN.match(file.name):
                 pairs.append({'float': file})
-            elif main_pattern.match(file.name):
+            elif MAIN_PATTERN.match(file.name):
                 pairs.append({'main': file})
         return pairs
     else:
@@ -122,30 +120,56 @@ def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 
+def process_folder(folder, script_dir):
+    folder_rel = folder.get("folder_rel", Path(""))
+    try:
+        folder_rel_normalized = folder_rel.resolve().relative_to(Path(script_dir).resolve())
+    except ValueError:
+        # If folder_rel is not relative to script_dir, keep it as is
+        folder_rel_normalized = folder_rel
+    folder_abs = Path(script_dir) / folder_rel_normalized
+    if not folder_abs.exists():
+        print(f"Warning: Folder path does not exist: {folder_abs}. Skipping.")
+        return None
+    image_files = [f for f in folder_abs.iterdir() if f.is_file() and f.suffix.lower() in ['.png', '.webp']]
+    if not image_files:
+        print(f"Warning: No image files found in folder: {folder_abs}. Skipping.")
+        return None
+
+    # Extract common pattern and max index
+    base_name = None
+    max_index = -1
+    for img in image_files:
+        match = IMAGE_PATTERN.match(img.name)
+        if match:
+            if not base_name:
+                # Construct the image pattern with placeholder
+                num_digits = len(match.group(2))
+                base_name = f"{match.group(1)}{{index:0{num_digits}d}}{match.group(3)}"
+            index = int(match.group(2))
+            if index > max_index:
+                max_index = index
+
+    if not base_name or max_index == -1:
+        print(f"Warning: Unable to determine pattern for folder: {folder_abs}. Skipping.")
+        return None
+
+    # Optionally, verify that all indices from 0 to max_index exist
+    # This step is skipped for performance; ensure your data is consistent
+
+    return {
+        "index": folder.get("index", 0),
+        "folder_rel": str(folder_rel_normalized).replace("\\", "/"),
+        "image_pattern": base_name,
+        "max_index": max_index
+    }
+
+
 def sort_image_files(folder_list, script_dir):
     sorted_folders = []
-    for folder in folder_list:
-        folder_rel = folder.get("folder_rel", Path(""))
-        try:
-            folder_rel_normalized = folder_rel.resolve().relative_to(Path(script_dir).resolve())
-        except ValueError:
-            # If folder_rel is not relative to script_dir, keep it as is
-            folder_rel_normalized = folder_rel
-        folder_abs = Path(script_dir) / folder_rel_normalized
-        if not folder_abs.exists():
-            print(f"Warning: Folder path does not exist: {folder_abs}. Skipping.")
-            continue
-        image_files = [f for f in folder_abs.iterdir() if f.is_file() and f.suffix.lower() in ['.png', '.webp']]
-        if not image_files:
-            print(f"Warning: No image files found in folder: {folder_abs}. Skipping.")
-            continue
-        sorted_files = sorted(image_files, key=lambda x: natural_sort_key(x.name))
-        sorted_image_paths = [(folder_rel_normalized / img.name).as_posix() for img in sorted_files]
-        sorted_folders.append({
-            "index": folder.get("index", 0),
-            "folder_rel": str(folder_rel_normalized),
-            "image_list": sorted_image_paths
-        })
+    with Pool() as pool:
+        results = pool.starmap(process_folder, [(folder, script_dir) for folder in folder_list])
+    sorted_folders = [r for r in results if r is not None]
     return sorted_folders
 
 
@@ -155,7 +179,7 @@ def write_json_list(folder_list, output_folder, output_filename):
         # Ensure all paths use forward slashes
         for folder in folder_list:
             folder["folder_rel"] = folder["folder_rel"].replace("\\", "/")
-            folder["image_list"] = [img.replace("\\", "/") for img in folder["image_list"]]
+            # No need to process 'image_list' as it's replaced by 'image_pattern' and 'max_index'
 
         # Write the regular JSON file
         with output_path.open('w', encoding='utf-8') as f:
@@ -170,18 +194,6 @@ def write_json_list(folder_list, output_folder, output_filename):
     except Exception as e:
         print(f"Failed to write JSON or gzipped JSON file at {output_path}: {e}")
         raise
-
-
-def remove_duplicates(folders):
-    for folder in folders:
-        seen = set()
-        unique_images = []
-        for img in folder["image_list"]:
-            if img not in seen:
-                seen.add(img)
-                unique_images.append(img)
-        folder["image_list"] = unique_images
-    return folders
 
 
 def process_files():
@@ -235,7 +247,7 @@ def process_files():
             main_folders = parse_folder_json(pair['main'])
             if main_folders:
                 sorted_main_folders = sort_image_files(main_folders, script_dir)
-                sorted_main_folders = remove_duplicates(sorted_main_folders)
+                # No need to remove duplicates since pattern and max_index handle uniqueness
                 all_main_folders.extend(sorted_main_folders)
             else:
                 print(f"No valid main folders found in {pair['main']}.")
@@ -244,7 +256,7 @@ def process_files():
             float_folders = parse_folder_json(pair['float'])
             if float_folders:
                 sorted_float_folders = sort_image_files(float_folders, script_dir)
-                sorted_float_folders = remove_duplicates(sorted_float_folders)
+                # No need to remove duplicates since pattern and max_index handle uniqueness
                 all_float_folders.extend(sorted_float_folders)
             else:
                 print(f"No valid float folders found in {pair['float']}.")

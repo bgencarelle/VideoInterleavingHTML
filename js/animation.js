@@ -13,6 +13,8 @@ function createRenderLoop(indexController, imageCache) {
         return () => {};
     }
 
+    let lastRenderedFrameNumber = null; // Track the last rendered frame
+
     return function renderLoop(timestamp) {
         try {
             const elapsed = timestamp - lastFrameTime;
@@ -23,20 +25,19 @@ function createRenderLoop(indexController, imageCache) {
                 const currentFrameNumber = indexController.getCurrentFrameNumber();
                 const imagePair = imageCache.get(currentFrameNumber);
 
-                if (imagePair) {
+                if (imagePair && currentFrameNumber !== lastRenderedFrameNumber) {
                     const { fgImgSrc, bgImgSrc } = imagePair;
-                    // Update only if needed
-                    if (bgImageElement.src !== bgImgSrc) {
-                        bgImageElement.src = bgImgSrc;
-                    }
-                    if (fgImageElement.src !== fgImgSrc) {
-                        fgImageElement.src = fgImgSrc;
-                    }
+
+                    bgImageElement.src = bgImgSrc;
+                    fgImageElement.src = fgImgSrc;
+
+                    lastRenderedFrameNumber = currentFrameNumber; // Update the last rendered frame
                 }
 
-                // Handle preloading asynchronously
-                // No console logs here
-                imageCache.handleFrameRender(currentFrameNumber).catch(() => {});
+                // Handle preloading asynchronously only if frame has changed
+                if (currentFrameNumber !== lastRenderedFrameNumber) {
+                    imageCache.handleFrameRender(currentFrameNumber).catch(() => {});
+                }
             }
 
             requestAnimationFrame(renderLoop);

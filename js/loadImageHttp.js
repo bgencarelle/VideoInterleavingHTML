@@ -22,10 +22,6 @@ export function loadImage(path) {
     const imagePromise = new Promise((resolve, reject) => {
         const img = new Image();
 
-        // Determine if the path is a cross-origin HTTP/HTTPS URL
-        if (isCrossOrigin(path)) {
-            img.crossOrigin = 'anonymous';
-        }
 
         // Allow async decoding
         img.decoding = 'async';
@@ -39,25 +35,4 @@ export function loadImage(path) {
 
     imageCache.set(path, imagePromise);
     return imagePromise;
-}
-
-/**
- * Determines whether the given path is a cross-origin HTTP/HTTPS URL.
- * File URLs are considered same-origin for this context.
- *
- * @param {string} path - The image path to check.
- * @returns {boolean} - True if the path is cross-origin HTTP/HTTPS, false otherwise.
- */
-function isCrossOrigin(path) {
-    try {
-        const url = new URL(path, window.location.href);
-        // Consider 'file:' protocol as same-origin for loading local files
-        if (url.protocol === 'file:') {
-            return false;
-        }
-        return url.origin !== window.location.origin;
-    } catch {
-        // If path is invalid, assume it's not cross-origin
-        return false;
-    }
 }

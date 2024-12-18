@@ -14,13 +14,12 @@ import { showModeOverlay, addKeyboardListeners, addFullscreenToggle, fetchPreloa
         const mainData = fetchPreloadedJSON('main');
         const floatData = fetchPreloadedJSON('float');
 
-        const maxIndex = mainData.folders[0].image_list.length;
+        const maxIndex = mainData.folders[0].max_index;
         const indexController = new IndexController(IPS,PINGPONG_MODE);
         const folderController = new FolderController(mainData.folders, floatData.folders);
 
 
         indexController.initialize(maxIndex);
-        console.log(`IndexController initialized with cycleLength: ${indexController.cycleLength}`);
 
         const cycleLength = indexController.cycleLength;
         const imageCache = new ImageCache(BUFFER_SIZE, {

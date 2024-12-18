@@ -4,6 +4,24 @@ import { showModeOverlay, setupKeyboardCallbacksFolder } from './utils.js';
 import { PINGPONG_MODE, FPS } from './config.js';
 import { RandomModeCalculator } from './randomModeCalc.js';
 
+/**
+ * Generates a filename by replacing the {index:04d} placeholder with the actual index.
+ * @param {string} pattern - The image pattern containing the placeholder.
+ * @param {number} index - The current index to replace in the pattern.
+ * @returns {string} - The generated filename.
+ */
+function generateFileName(pattern, index) {
+    // Extract the desired number of digits from the pattern
+    const match = pattern.match(/\{index:(\d+)d\}/);
+    if (match) {
+        const digits = parseInt(match[1], 10);
+        const indexStr = index.toString().padStart(digits, '0');
+        return pattern.replace(/\{index:\d+d\}/, indexStr);
+    }
+    // If no match, return the pattern as is
+    return pattern;
+}
+
 export class FolderController {
     constructor(mainFolders, floatFolders) {
         this.mainFolders = mainFolders;
@@ -16,12 +34,17 @@ export class FolderController {
         this.debounceTimer = null;
         this.debounceDelay = 30;
 
+        // Cache references
+        this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
+        this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
+
         // Initialize RandomModeCalculator
         this.randomModeCalc = new RandomModeCalculator(
             this.mainFolders,
             this.floatFolders,
             this.updateFolderState.bind(this)
         );
+        setupKeyboardCallbacksFolder(this);
     }
 
     /**
@@ -61,13 +84,17 @@ export class FolderController {
 
         this.currentMainFolder = (this.currentMainFolder + mainDelta) % this.mainFolders.length;
         if (this.currentMainFolder < 0) {
-            this.currentMainFolder = this.mainFolders.length + this.currentMainFolder;
+            this.currentMainFolder += this.mainFolders.length;
         }
 
         this.currentFloatFolder = (this.currentFloatFolder + floatDelta) % this.floatFolders.length;
         if (this.currentFloatFolder < 0) {
-            this.currentFloatFolder = this.floatFolders.length + this.currentFloatFolder;
+            this.currentFloatFolder += this.floatFolders.length;
         }
+
+        // Update cached references
+        this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
+        this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
 
         this.applyManualFolderChange();
     }
@@ -112,6 +139,9 @@ export class FolderController {
                 this.randomModeCalc.updateRandomMode(frameNumber);
                 this.currentMainFolder = this.randomModeCalc.currentMainFolder;
                 this.currentFloatFolder = this.randomModeCalc.currentFloatFolder;
+                // Update cached references
+                this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
+                this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
                 break;
             case 'INCREMENT':
                 this.updateIncrementMode(frameNumber);
@@ -132,6 +162,9 @@ export class FolderController {
         if (frameNumber > 0 && frameNumber % FPS === 0) {
             this.currentMainFolder = (this.currentMainFolder + 1) % this.mainFolders.length;
             this.currentFloatFolder = (this.currentFloatFolder + 1) % this.floatFolders.length;
+            // Update cached references
+            this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
+            this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
             this.notifyListeners({ folderChanged: true });
         }
     }
@@ -146,29 +179,37 @@ export class FolderController {
         const mainFolder = this.mainFolders[this.currentMainFolder];
         const floatFolder = this.floatFolders[this.currentFloatFolder];
 
-        const mainIndex = this.getFrameIndex(frameNumber, mainFolder.image_list.length);
-        const floatIndex = this.getFrameIndex(frameNumber, floatFolder.image_list.length);
+        // Ensure that frameNumber does not exceed max_index
+        const mainIndex = this.getFrameIndex(frameNumber, mainFolder.max_index);
+        const floatIndex = this.getFrameIndex(frameNumber, floatFolder.max_index);
 
-        const mainImage = mainFolder.image_list[mainIndex];
-        const floatImage = floatFolder.image_list[floatIndex];
+        // Generate filenames based on the image_pattern
+        const mainFileName = generateFileName(mainFolder.image_pattern, mainIndex);
+        const floatFileName = generateFileName(floatFolder.image_pattern, floatIndex);
+
+        // Concatenate folder_rel with the generated filename to get the full path
+        const mainImage = `${mainFolder.folder_rel}/${mainFileName}`;
+        const floatImage = `${floatFolder.folder_rel}/${floatFileName}`;
 
         return { mainImage, floatImage };
     }
 
     /**
-     * Calculates the frame index based on frame number and list length.
+     * Calculates the frame index based on frame number and max index.
      * Supports ping-pong mode if enabled.
      * @param {number} frameNumber - The current frame number.
-     * @param {number} listLength - The length of the image list.
+     * @param {number} maxIndex - The maximum index (exclusive).
      * @returns {number} - The calculated frame index.
      */
-    getFrameIndex(frameNumber, listLength) {
+    getFrameIndex(frameNumber, maxIndex) {
+        if (maxIndex <= 0) return 0; // Prevent division by zero
+
         if (!PINGPONG_MODE) {
-            return frameNumber % listLength;
+            return frameNumber % maxIndex;
         }
-        const cycle = listLength * 2;
+        const cycle = maxIndex * 2;
         const position = frameNumber % cycle;
-        return position < listLength ? position : cycle - position - 1;
+        return position < maxIndex ? position : cycle - position - 1;
     }
 
     /**
@@ -179,4 +220,12 @@ export class FolderController {
         this.listeners.forEach((callback) => callback(event));
     }
 
+    // Add methods to register listeners if not already present
+    addListener(callback) {
+        this.listeners.push(callback);
+    }
+
+    removeListener(callback) {
+        this.listeners = this.listeners.filter(listener => listener !== callback);
+    }
 }
