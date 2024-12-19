@@ -8,26 +8,37 @@ from pathlib import Path
 from PIL import Image
 from collections import defaultdict
 
+
 def get_subdirectories(path: Path):
     """Retrieve all subdirectories within a given path."""
     return [d for d in path.rglob('*') if d.is_dir()]
+
 
 def contains_image_files(path: Path):
     """Check if a directory contains any PNG or WEBP files."""
     return any(file.suffix.lower() in ['.png', '.webp'] for file in path.iterdir())
 
+
 def count_image_files(path: Path):
     """Count the number of PNG and WEBP files in a directory."""
     return sum(1 for file in path.iterdir() if file.suffix.lower() in ['.png', '.webp'])
+
 
 def parse_line(line: str):
     """Parse a line from folder_locations.txt."""
     match = re.match(r'(\d+)[.,]\s*(.+)', line)
     return (int(match.group(1)), match.group(2)) if match else (None, None)
 
+
 def has_alpha_channel(image: Image.Image):
     """Determine if an image has an alpha channel."""
     return image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info)
+
+
+def natural_sort_key(s: str):
+    """Generate a key for natural sorting."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
 
 def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Path):
     """Create JSON files categorizing folders into main and float groups."""
@@ -55,11 +66,9 @@ def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Pat
 
     def write_json(group, file_name_format):
         for file_count_write, sub_group in group.items():
-            # Sort the group based on numeric prefix or folder name
-            sub_group_sorted = sorted(sub_group, key=lambda x: (
-                int(x["folder_rel"].split('_')[0]) if x["folder_rel"].split('_')[0].isdigit() else float('inf'),
-                x["folder_rel"]
-            ))
+            # **Use natural_sort_key for sorting folders naturally**
+            sub_group_sorted = sorted(sub_group, key=lambda x: natural_sort_key(x["folder_rel"]))
+
             # Assign indices
             for idx, folder_data_write in enumerate(sub_group_sorted, 0):
                 folder_data_write["index"] = idx
@@ -72,12 +81,13 @@ def create_folder_json_files(folder_counts, processed_dir: Path, script_dir: Pat
     write_json(groups, 'main_folders_{}.json')
     write_json(float_group, 'float_folders_{}.json')
 
+
 def write_folder_list():
     """Main function to create folder lists and JSON files."""
     # Determine the script's directory
     script_dir = Path(__file__).parent.resolve()
     processed_dir = script_dir / "folders_processed"
-	
+
     if processed_dir.exists():
         shutil.rmtree(processed_dir)
 
@@ -173,7 +183,7 @@ def write_folder_list():
     folder_count_path = processed_dir / folder_count_filename
     try:
         with folder_count_path.open('w', encoding='utf-8') as f:
-            for index, (folder, first_img, width, height, has_alpha, count) in enumerate(folder_counts, 1):
+            for index, (folder, first_img, width, height, count, has_alpha) in enumerate(folder_counts, 1):
                 folder_rel = folder.relative_to(script_dir).as_posix()
                 first_png_stripped = first_img.stem if first_img else "NoImage"
                 f.write(f"{index}, {folder_rel}, {first_png_stripped}, {width}x{height}, {count}, {has_alpha}\n")
@@ -189,9 +199,11 @@ def write_folder_list():
         print(f"Failed to create folder JSON files: {e}")
         raise
 
+
 def natural_sort_key(s: str):
     """Generate a key for natural sorting."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
 
 if __name__ == "__main__":
     write_folder_list()

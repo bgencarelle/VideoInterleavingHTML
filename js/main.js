@@ -14,7 +14,8 @@ import { showModeOverlay, addKeyboardListeners, addFullscreenToggle, fetchPreloa
         const mainData = fetchPreloadedJSON('main');
         const floatData = fetchPreloadedJSON('float');
 
-        const maxIndex = mainData.folders[0].max_index;
+        //const maxIndex = mainData.folders[0].image_list.length;
+        const maxIndex = mainData.folders[0].max_file_index;
         const indexController = new IndexController(IPS,PINGPONG_MODE);
         const folderController = new FolderController(mainData.folders, floatData.folders);
 

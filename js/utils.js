@@ -185,3 +185,18 @@ export function setupKeyboardCallbacksFolder(controller) {
         document.removeEventListener('keydown', boundKeydownHandler);
     };
 }
+
+
+/**
+ * Parses the image pattern and replaces the placeholder with the formatted index.
+ * Supports patterns like "{index:04d}" where 04d indicates zero-padding to 4 digits.
+ * @param {string} pattern - The image pattern string.
+ * @param {number} index - The index to insert into the pattern.
+ * @returns {string} - The reconstructed file name.
+ */
+export function parseImagePattern(pattern, index) {
+    return pattern.replace(/\{index:(\d+)d\}/, (match, padding) => {
+        const padLength = parseInt(padding, 10);
+        return index.toString().padStart(padLength, '0');
+    });
+}

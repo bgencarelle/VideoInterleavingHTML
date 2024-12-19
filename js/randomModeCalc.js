@@ -34,7 +34,7 @@ export class RandomModeCalculator {
         if (frameNumber < this.rand_start ||
             (frameNumber > 10 * this.rand_mult && frameNumber < 12 * this.rand_mult)) {
             this.resetRandomFolders();
-            this.rand_start = getRandomInt(FPS, 5 * FPS);
+            this.rand_start = getRandomInt(FPS, 4 * FPS);
             this.notifyListeners({ folderChanged: true });
         } else {
             this.rand_start = getRandomInt(FPS, 5 * FPS);

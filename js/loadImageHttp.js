@@ -14,14 +14,14 @@ const imageCache = new Map();
  * @throws {Error} - Throws an error if the image fails to load.
  */
 export function loadImage(path) {
-    // If the image is already being loaded, return the existing promise
-    if (imageCache.has(path)) {
-        return imageCache.get(path);
+    // Attempt to retrieve the existing promise directly
+    const cachedPromise = imageCache.get(path);
+    if (cachedPromise) {
+        return cachedPromise;
     }
 
     const imagePromise = new Promise((resolve, reject) => {
         const img = new Image();
-
 
         // Allow async decoding
         img.decoding = 'async';

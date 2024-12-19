@@ -96,6 +96,7 @@ export class ImageCache {
 
     async loadAndCacheFrame(frameNumber) {
         // Now we assume folderController was already updated
+        this.folderController.updateFolders(frameNumber);
         const filePaths = this.folderController.getFilePaths(frameNumber);
         const { mainImage, floatImage } = filePaths;
 

@@ -23,6 +23,7 @@ function createRenderLoop(indexController, imageCache) {
 
                 indexController.update(timestamp);
                 const currentFrameNumber = indexController.getCurrentFrameNumber();
+                //console.log(`Frame updated to: ${currentFrameNumber}`);
                 const imagePair = imageCache.get(currentFrameNumber);
 
                 if (imagePair && currentFrameNumber !== lastRenderedFrameNumber) {

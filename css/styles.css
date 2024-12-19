@@ -10,7 +10,7 @@ body, html {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: #000000FF; /* Background color for the page */
+    background-color: rgba(13, 5, 99, 255); /* Background color for the page */
     font-family: Arial, sans-serif;
     display: flex; /* Ensures child elements can stretch properly */
 
@@ -21,7 +21,7 @@ body, html {
     position: relative;
     width: 100%; /* Matches the full width of the viewport */
     height: 100%; /* Matches the full height of the viewport */
-    background-color: rgba(13, 5, 99, 0); /* Equivalent to your previous canvas background */
+    background-color: rgba(13, 5, 9, 255); /* Equivalent to your previous canvas background */
     isolation: isolate; /* Prevent blending with other elements */
     overflow: hidden; /* Ensures no unexpected scrollbars */
     display: flex; /* Ensures internal resizing consistency */

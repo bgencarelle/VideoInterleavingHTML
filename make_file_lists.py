@@ -10,7 +10,8 @@ from multiprocessing import Pool
 # Pre-compile regex patterns for efficiency
 FLOAT_PATTERN = re.compile(r'^float_folders_(\d+)\.json$')
 MAIN_PATTERN = re.compile(r'^main_folders_(\d+)\.json$')
-IMAGE_PATTERN = re.compile(r'^(.*?)(\d{4,})(\.\w+)$')
+# Updated IMAGE_PATTERN to allow for variable number of digits and no assumption on underscores
+IMAGE_PATTERN = re.compile(r'^(.*?)(\d+)(\.\w+)$')
 
 
 def find_default_jsons(processed_dir):
@@ -136,32 +137,54 @@ def process_folder(folder, script_dir):
         print(f"Warning: No image files found in folder: {folder_abs}. Skipping.")
         return None
 
-    # Extract common pattern and max index
-    base_name = None
-    max_index = -1
+    # Extract indices and sort them to find the smallest index
+    indices = []
     for img in image_files:
         match = IMAGE_PATTERN.match(img.name)
         if match:
-            if not base_name:
-                # Construct the image pattern with placeholder
-                num_digits = len(match.group(2))
-                base_name = f"{match.group(1)}{{index:0{num_digits}d}}{match.group(3)}"
             index = int(match.group(2))
-            if index > max_index:
-                max_index = index
+            indices.append((index, img.name))
 
-    if not base_name or max_index == -1:
-        print(f"Warning: Unable to determine pattern for folder: {folder_abs}. Skipping.")
+    if not indices:
+        print(f"Warning: No image files matched the pattern in folder: {folder_abs}. Skipping.")
         return None
 
-    # Optionally, verify that all indices from 0 to max_index exist
-    # This step is skipped for performance; ensure your data is consistent
+    # Sort indices to find the smallest index
+    indices.sort(key=lambda x: x[0])
+    min_index, min_filename = indices[0]
+
+    # Determine padding based on the smallest index
+    match = IMAGE_PATTERN.match(min_filename)
+    if not match:
+        print(f"Warning: Unable to parse the smallest index filename: {min_filename} in folder: {folder_abs}. Skipping.")
+        return None
+
+    num_digits = len(match.group(2))  # Number of digits in the smallest index
+
+    # Construct the image pattern with dynamic padding
+    base_name = f"{match.group(1)}{{index:0{num_digits}d}}{match.group(3)}"
+
+    # Find the maximum index
+    max_index = max(index for index, _ in indices)
+
+    # Optional: Verify that all indices have consistent padding
+    inconsistent = False
+    for index, filename in indices:
+        expected_filename = f"{match.group(1)}{index:0{num_digits}d}{match.group(3)}"
+        if filename != expected_filename:
+            print(f"Warning: Inconsistent padding in filename: {filename}. Expected: {expected_filename}")
+            inconsistent = True
+            break  # Optionally, continue checking all or handle differently
+
+    if inconsistent:
+        print(f"Warning: Padding inconsistency detected in folder: {folder_abs}. Skipping.")
+        return None
 
     return {
-        "index": folder.get("index", 0),
+        "folder_index": folder.get("index", 0),
         "folder_rel": str(folder_rel_normalized).replace("\\", "/"),
         "image_pattern": base_name,
-        "max_index": max_index
+        "max_file_index": max_index
     }
 
 
@@ -179,7 +202,7 @@ def write_json_list(folder_list, output_folder, output_filename):
         # Ensure all paths use forward slashes
         for folder in folder_list:
             folder["folder_rel"] = folder["folder_rel"].replace("\\", "/")
-            # No need to process 'image_list' as it's replaced by 'image_pattern' and 'max_index'
+            # No need to process 'image_list' as it's replaced by 'image_pattern' and 'max_file_index'
 
         # Write the regular JSON file
         with output_path.open('w', encoding='utf-8') as f:

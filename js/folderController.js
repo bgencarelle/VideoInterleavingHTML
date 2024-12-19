@@ -4,24 +4,6 @@ import { showModeOverlay, setupKeyboardCallbacksFolder } from './utils.js';
 import { PINGPONG_MODE, FPS } from './config.js';
 import { RandomModeCalculator } from './randomModeCalc.js';
 
-/**
- * Generates a filename by replacing the {index:04d} placeholder with the actual index.
- * @param {string} pattern - The image pattern containing the placeholder.
- * @param {number} index - The current index to replace in the pattern.
- * @returns {string} - The generated filename.
- */
-function generateFileName(pattern, index) {
-    // Extract the desired number of digits from the pattern
-    const match = pattern.match(/\{index:(\d+)d\}/);
-    if (match) {
-        const digits = parseInt(match[1], 10);
-        const indexStr = index.toString().padStart(digits, '0');
-        return pattern.replace(/\{index:\d+d\}/, indexStr);
-    }
-    // If no match, return the pattern as is
-    return pattern;
-}
-
 export class FolderController {
     constructor(mainFolders, floatFolders) {
         this.mainFolders = mainFolders;
@@ -32,11 +14,7 @@ export class FolderController {
         this.listeners = [];
         this.pendingExternalChange = null;
         this.debounceTimer = null;
-        this.debounceDelay = 30;
-
-        // Cache references
-        this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
-        this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
+        this.debounceDelay = 200;
 
         // Initialize RandomModeCalculator
         this.randomModeCalc = new RandomModeCalculator(
@@ -44,7 +22,53 @@ export class FolderController {
             this.floatFolders,
             this.updateFolderState.bind(this)
         );
-        setupKeyboardCallbacksFolder(this);
+
+        // Generate image_list from image_pattern if necessary
+        this.generateImageLists(this.mainFolders);
+        this.generateImageLists(this.floatFolders);
+
+        // Setup keyboard callbacks using utils.js
+        this.boundKeydownHandler = setupKeyboardCallbacksFolder(this);
+    }
+
+    /**
+     * Generates the image_list for folders based on image_pattern and max_file_index.
+     * @param {Array} folders - Array of folder objects to process.
+     */
+    generateImageLists(folders) {
+        folders.forEach(folder => {
+            if (!folder.image_list && folder.image_pattern && typeof folder.max_file_index === 'number') {
+                folder.image_list = this.generateImageListFromPattern(folder.folder_rel, folder.image_pattern, folder.max_file_index);
+            }
+        });
+    }
+
+    /**
+     * Generates an image list based on the provided pattern and maximum index.
+     * @param {string} folderRel - The relative path of the folder.
+     * @param {string} pattern - The image pattern string with placeholders.
+     * @param {number} maxIndex - The maximum file index.
+     * @returns {Array} - An array of generated full file paths.
+     */
+    generateImageListFromPattern(folderRel, pattern, maxIndex) {
+        const imageList = [];
+        const regex = /\{index(?::(\d+)d)?\}/g;
+
+        // Ensure folderRel does not end with a slash
+        const normalizedFolderRel = folderRel.endsWith('/') ? folderRel.slice(0, -1) : folderRel;
+
+        for (let i = 0; i <= maxIndex; i++) {
+            let fileName = pattern.replace(regex, (match, padding) => {
+                if (padding) {
+                    return String(i).padStart(parseInt(padding, 10), '0');
+                }
+                return i;
+            });
+            // Construct the full file path
+            const fullPath = `${normalizedFolderRel}/${fileName}`;
+            imageList.push(fullPath);
+        }
+        return imageList;
     }
 
     /**
@@ -84,17 +108,13 @@ export class FolderController {
 
         this.currentMainFolder = (this.currentMainFolder + mainDelta) % this.mainFolders.length;
         if (this.currentMainFolder < 0) {
-            this.currentMainFolder += this.mainFolders.length;
+            this.currentMainFolder = this.mainFolders.length + this.currentMainFolder;
         }
 
         this.currentFloatFolder = (this.currentFloatFolder + floatDelta) % this.floatFolders.length;
         if (this.currentFloatFolder < 0) {
-            this.currentFloatFolder += this.floatFolders.length;
+            this.currentFloatFolder = this.floatFolders.length + this.currentFloatFolder;
         }
-
-        // Update cached references
-        this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
-        this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
 
         this.applyManualFolderChange();
     }
@@ -139,9 +159,6 @@ export class FolderController {
                 this.randomModeCalc.updateRandomMode(frameNumber);
                 this.currentMainFolder = this.randomModeCalc.currentMainFolder;
                 this.currentFloatFolder = this.randomModeCalc.currentFloatFolder;
-                // Update cached references
-                this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
-                this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
                 break;
             case 'INCREMENT':
                 this.updateIncrementMode(frameNumber);
@@ -159,12 +176,9 @@ export class FolderController {
      * @param {number} frameNumber - The current frame number.
      */
     updateIncrementMode(frameNumber) {
-        if (frameNumber > 0 && frameNumber % FPS === 0) {
+        if (frameNumber > 0 && frameNumber % 3 === 0) {
             this.currentMainFolder = (this.currentMainFolder + 1) % this.mainFolders.length;
-            this.currentFloatFolder = (this.currentFloatFolder + 1) % this.floatFolders.length;
-            // Update cached references
-            this.currentMainFolderData = this.mainFolders[this.currentMainFolder];
-            this.currentFloatFolderData = this.floatFolders[this.currentFloatFolder];
+            this.currentFloatFolder = (this.currentFloatFolder + 2) % this.floatFolders.length;
             this.notifyListeners({ folderChanged: true });
         }
     }
@@ -179,37 +193,29 @@ export class FolderController {
         const mainFolder = this.mainFolders[this.currentMainFolder];
         const floatFolder = this.floatFolders[this.currentFloatFolder];
 
-        // Ensure that frameNumber does not exceed max_index
-        const mainIndex = this.getFrameIndex(frameNumber, mainFolder.max_index);
-        const floatIndex = this.getFrameIndex(frameNumber, floatFolder.max_index);
+        const mainIndex = this.getFrameIndex(frameNumber, mainFolder.image_list.length);
+        const floatIndex = this.getFrameIndex(frameNumber, floatFolder.image_list.length);
 
-        // Generate filenames based on the image_pattern
-        const mainFileName = generateFileName(mainFolder.image_pattern, mainIndex);
-        const floatFileName = generateFileName(floatFolder.image_pattern, floatIndex);
-
-        // Concatenate folder_rel with the generated filename to get the full path
-        const mainImage = `${mainFolder.folder_rel}/${mainFileName}`;
-        const floatImage = `${floatFolder.folder_rel}/${floatFileName}`;
+        const mainImage = mainFolder.image_list[mainIndex];
+        const floatImage = floatFolder.image_list[floatIndex];
 
         return { mainImage, floatImage };
     }
 
     /**
-     * Calculates the frame index based on frame number and max index.
+     * Calculates the frame index based on frame number and list length.
      * Supports ping-pong mode if enabled.
      * @param {number} frameNumber - The current frame number.
-     * @param {number} maxIndex - The maximum index (exclusive).
+     * @param {number} listLength - The length of the image list.
      * @returns {number} - The calculated frame index.
      */
-    getFrameIndex(frameNumber, maxIndex) {
-        if (maxIndex <= 0) return 0; // Prevent division by zero
-
+    getFrameIndex(frameNumber, listLength) {
         if (!PINGPONG_MODE) {
-            return frameNumber % maxIndex;
+            return frameNumber % listLength;
         }
-        const cycle = maxIndex * 2;
+        const cycle = listLength * 2;
         const position = frameNumber % cycle;
-        return position < maxIndex ? position : cycle - position - 1;
+        return position < listLength ? position : cycle - position - 1;
     }
 
     /**
@@ -220,12 +226,4 @@ export class FolderController {
         this.listeners.forEach((callback) => callback(event));
     }
 
-    // Add methods to register listeners if not already present
-    addListener(callback) {
-        this.listeners.push(callback);
-    }
-
-    removeListener(callback) {
-        this.listeners = this.listeners.filter(listener => listener !== callback);
-    }
 }
