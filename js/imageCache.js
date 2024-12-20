@@ -15,11 +15,15 @@ export class ImageCache {
 
         this.framesSinceLastPreload = 0;
         this.preloadCooldown = 5; // same logic as before
+
+        // We track if a trim is needed rather than trimming on every set
+        this.needsTrim = false;
     }
 
     set(frameNumber, item) {
         this.cache.set(frameNumber, item);
-        this.trimCache();
+        // Mark that we may need to trim, but don't do it yet
+        this.needsTrim = true;
     }
 
     get(frameNumber) {
@@ -41,30 +45,29 @@ export class ImageCache {
         const preloadFrames = this.getPreloadFrames(currentFrame, this.bufferSize);
         const framesNeeded = preloadFrames.filter(f => !this.has(f));
 
-        // If no frames needed, skip
-        if (framesNeeded.length === 0) return;
-
-        // Check how many frames are already cached
-        const cachedCount = preloadFrames.filter(f => this.has(f)).length;
-        // If more than half are already cached, maybe skip this attempt
-        const halfBuffer = Math.floor(this.bufferSize / 2);
-        if (cachedCount > halfBuffer && this.framesSinceLastPreload < this.preloadCooldown) {
-            // We have more than half preloaded and haven't waited long enough, skip preloading
+        // If no frames needed, skip preloading
+        if (framesNeeded.length === 0) {
             return;
         }
 
-        // If buffer is less than half full or cooldown passed, let's update folders and load
-        // Update folders just once before loading
+        // Check how many frames are cached
+        const cachedCount = preloadFrames.filter(f => this.has(f)).length;
+        const halfBuffer = Math.floor(this.bufferSize / 2);
+
+        // If more than half are cached and the cooldown hasn't elapsed, skip this preload round
+        if (cachedCount > halfBuffer && this.framesSinceLastPreload < this.preloadCooldown) {
+            return;
+        }
+
+        // Update folders once here
         this.folderController.updateFolders(currentFrame);
 
-        // Now actually preload
         this.isPreloading = true;
         this.framesSinceLastPreload = 0;
 
         try {
             const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
             const queue = [...framesNeeded];
-            const workers = [];
 
             const worker = async () => {
                 while (queue.length > 0) {
@@ -73,6 +76,7 @@ export class ImageCache {
                 }
             };
 
+            const workers = [];
             for (let i = 0; i < concurrencyLimit; i++) {
                 workers.push(worker());
             }
@@ -82,6 +86,11 @@ export class ImageCache {
             console.error('Error during image preloading:', error);
         } finally {
             this.isPreloading = false;
+            // Now that we've done a preload cycle, if we need to trim, do it once here
+            if (this.needsTrim) {
+                this.trimCache(currentFrame, preloadFrames);
+                this.needsTrim = false;
+            }
         }
     }
 
@@ -95,14 +104,14 @@ export class ImageCache {
     }
 
     async loadAndCacheFrame(frameNumber) {
-        // Now we assume folderController was already updated
+        // **Important:** We reintroduce the folderController update here to ensure mode-dependent changes
+        // remain responsive, as required.
         this.folderController.updateFolders(frameNumber);
+
         const filePaths = this.folderController.getFilePaths(frameNumber);
         const { mainImage, floatImage } = filePaths;
 
-        if (!mainImage || !floatImage) {
-            return;
-        }
+        if (!mainImage || !floatImage) return;
 
         try {
             const [bgImg, fgImg] = await Promise.all([
@@ -114,16 +123,13 @@ export class ImageCache {
                 this.set(frameNumber, { fgImgSrc: fgImg.src, bgImgSrc: bgImg.src });
             }
         } catch (imageError) {
-            // skip failed frames silently
+            // Skip silently if images fail to load
         }
     }
 
-    trimCache() {
-        const currentFrame = this.indexController.getCurrentFrameNumber();
-        const validFrames = new Set([
-            currentFrame,
-            ...this.getPreloadFrames(currentFrame, this.bufferSize)
-        ]);
+    trimCache(currentFrame, preloadFrames) {
+        // We reuse preloadFrames instead of calling getPreloadFrames() again
+        const validFrames = new Set([currentFrame, ...preloadFrames]);
 
         for (const frameNumber of this.cache.keys()) {
             if (!validFrames.has(frameNumber)) {

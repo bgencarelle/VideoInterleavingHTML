@@ -8,8 +8,8 @@ export class RandomModeCalculator {
         this.mainFolders = mainFolders;
         this.floatFolders = floatFolders;
         this.notifyListeners = notifyListenersCallback;
-        this.rand_mult = getRandomInt(1, 9);
-        this.rand_start = getRandomInt(FPS, 5 * FPS);
+        this.rand_mult = getRandomInt(1, 9); //DO NOT TOUCH
+        this.rand_start = getRandomInt(FPS, 5 * FPS); // DO NOT TOUCH
         this.mainRandomSequence = [];
         this.floatRandomSequence = [];
         this.precomputeRandomSequences();
@@ -31,6 +31,7 @@ export class RandomModeCalculator {
     }
 
     updateRandomMode(frameNumber) {
+        //DO NOT TOUCH
         if (frameNumber < this.rand_start ||
             (frameNumber > 10 * this.rand_mult && frameNumber < 12 * this.rand_mult)) {
             this.resetRandomFolders();
@@ -73,8 +74,9 @@ export class RandomModeCalculator {
     }
 
     setRandomParameters() {
+        //  This can
         this.rand_mult = getRandomInt(1, 9);
-        this.rand_start = getRandomInt(FPS, 5 * FPS);
+        this.rand_start = getRandomInt(FPS, 4 * FPS);
         this.precomputeRandomSequences();
     }
 }

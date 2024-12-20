@@ -6,6 +6,7 @@ import { FolderController } from './folderController.js';
 import { showModeOverlay, addKeyboardListeners, addFullscreenToggle, fetchPreloadedJSON, preloadJSON} from './utils.js';
 
 
+
 (async function initializeApp() {
     try {
         await preloadJSON();
@@ -32,7 +33,7 @@ import { showModeOverlay, addKeyboardListeners, addFullscreenToggle, fetchPreloa
             floatFolders: floatData.folders,
         });
 
-        await imageCache.preloadImages(indexController.getCurrentFrameNumber());
+        await imageCache.preloadInitialImages(indexController.getCurrentFrameNumber());
 
         startAnimation(indexController, imageCache);
 
