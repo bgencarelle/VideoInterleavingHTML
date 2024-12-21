@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>image layering app</title>
+
+    <!-- preload and load css -->
+    <link rel="stylesheet" href="dist/styles.min.css" media="print" onload= "media='all'">
+    <noscript>
+        <link rel="stylesheet" href="dist/styles.min.css">
+    </noscript>
+</head>
+<body>
+    <div id="image-container" class="image-container">
+        <img id="bg-image" class="layer bg" src="" alt="background image" loading="lazy">
+        <img id="fg-image" class="layer fg" src="" alt="foreground image" loading="lazy">
+    </div>
+
+    <!-- main javascript -->
+    <script type="module" src="dist/bundle.js"></script>
+</body>
+</html>
