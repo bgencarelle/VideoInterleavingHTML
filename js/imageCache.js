@@ -5,7 +5,11 @@ import { loadImage } from './loadImageHttp.js';
 export class ImageCache {
     constructor(bufferSize, options = {}) {
         this.bufferSize = bufferSize;
-        this.cache = new Map();
+        this.buffer = new Array(bufferSize).fill(null); // Preallocate buffer
+        this.head = 0; // Points to the oldest entry
+        this.tail = 0; // Points to the next insertion point
+        this.isFull = false; // Indicates if the buffer is FULL
+
         this.cycleLength = options.cycleLength || 1;
         this.indexController = options.indexController;
         this.folderController = options.folderController;
@@ -14,31 +18,77 @@ export class ImageCache {
         this.isPreloading = false;
 
         this.framesSinceLastPreload = 0;
-        this.preloadCooldown = 5; // same logic as before
+        this.preloadCooldown = 5; // Same logic as before
 
-        // We track if a trim is needed rather than trimming on every set
-        this.needsTrim = false;
+        // No need for needsTrim flag since circular buffer handles it
     }
 
+    /**
+     * Adds a new image pair to the buffer.
+     * Overwrites the oldest entry if the buffer is full.
+     * @param {number} frameNumber
+     * @param {Object} item - Contains fgImgSrc and bgImgSrc
+     */
     set(frameNumber, item) {
-        this.cache.set(frameNumber, item);
-        // Mark that we may need to trim, but don't do it yet
-        this.needsTrim = true;
+        this.buffer[this.tail] = { frameNumber, ...item };
+        this.tail = (this.tail + 1) % this.bufferSize;
+
+        if (this.isFull) {
+            // Overwrite the oldest entry by moving head forward
+            this.head = (this.head + 1) % this.bufferSize;
+        }
+
+        if (this.tail === this.head) {
+            this.isFull = true;
+        }
     }
 
+    /**
+     * Retrieves the image pair for the specified frameNumber.
+     * @param {number} frameNumber
+     * @returns {Object|null} - Contains fgImgSrc and bgImgSrc or null if not found
+     */
     get(frameNumber) {
-        return this.cache.get(frameNumber) || null;
+        for (let i = 0; i < this.bufferSize; i++) {
+            const index = (this.head + i) % this.bufferSize;
+            const entry = this.buffer[index];
+            if (entry && entry.frameNumber === frameNumber) {
+                return { fgImgSrc: entry.fgImgSrc, bgImgSrc: entry.bgImgSrc };
+            }
+        }
+        return null;
     }
 
+    /**
+     * Checks if the buffer contains the specified frameNumber.
+     * @param {number} frameNumber
+     * @returns {boolean}
+     */
     has(frameNumber) {
-        return this.cache.has(frameNumber);
+        for (let i = 0; i < this.bufferSize; i++) {
+            const index = (this.head + i) % this.bufferSize;
+            const entry = this.buffer[index];
+            if (entry && entry.frameNumber === frameNumber) {
+                return true;
+            }
+        }
+        return false;
     }
 
+    /**
+     * Handles frame rendering by potentially triggering preloading.
+     * @param {number} currentFrame
+     */
     async handleFrameRender(currentFrame) {
         this.framesSinceLastPreload++;
         await this.preloadImages(currentFrame);
     }
 
+    /**
+     * Preloads images based on the current frame and buffer size.
+     * Implements concurrency control and cooldown logic.
+     * @param {number} currentFrame
+     */
     async preloadImages(currentFrame) {
         if (this.isPreloading) return;
 
@@ -69,16 +119,10 @@ export class ImageCache {
             const concurrencyLimit = MAX_CONCURRENT_FETCHES || 5;
             const queue = [...framesNeeded];
 
-            const worker = async () => {
-                while (queue.length > 0) {
-                    const frameNumber = queue.shift();
-                    await this.loadAndCacheFrame(frameNumber);
-                }
-            };
-
+            // Create worker functions based on concurrencyLimit
             const workers = [];
             for (let i = 0; i < concurrencyLimit; i++) {
-                workers.push(worker());
+                workers.push(this.worker(queue));
             }
 
             await Promise.all(workers);
@@ -86,14 +130,27 @@ export class ImageCache {
             console.error('Error during image preloading:', error);
         } finally {
             this.isPreloading = false;
-            // Now that we've done a preload cycle, if we need to trim, do it once here
-            if (this.needsTrim) {
-                this.trimCache(currentFrame, preloadFrames);
-                this.needsTrim = false;
-            }
+            // No need for trimCache since circular buffer handles overwrites
         }
     }
 
+    /**
+     * Worker function to process the preload queue.
+     * @param {Array<number>} queue
+     */
+    async worker(queue) {
+        while (queue.length > 0) {
+            const frameNumber = queue.shift();
+            await this.loadAndCacheFrame(frameNumber);
+        }
+    }
+
+    /**
+     * Determines which frames need to be preloaded based on the current frame and buffer size.
+     * @param {number} currentFrame
+     * @param {number} bufferSize
+     * @returns {Array<number>} - Array of frameNumbers to preload
+     */
     getPreloadFrames(currentFrame, bufferSize) {
         const preloadFrames = [];
         for (let i = 1; i <= bufferSize; i++) {
@@ -103,9 +160,12 @@ export class ImageCache {
         return preloadFrames;
     }
 
+    /**
+     * Loads images for a specific frame and adds them to the buffer.
+     * @param {number} frameNumber
+     */
     async loadAndCacheFrame(frameNumber) {
-        // **Important:** We reintroduce the folderController update here to ensure mode-dependent changes
-        // remain responsive, as required.
+        // Reintroduce folderController update to ensure mode-dependent changes
         this.folderController.updateFolders(frameNumber);
 
         const filePaths = this.folderController.getFilePaths(frameNumber);
@@ -124,20 +184,14 @@ export class ImageCache {
             }
         } catch (imageError) {
             // Skip silently if images fail to load
+            console.warn(`Failed to load images for frame ${frameNumber}:`, imageError);
         }
     }
 
-    trimCache(currentFrame, preloadFrames) {
-        // We reuse preloadFrames instead of calling getPreloadFrames() again
-        const validFrames = new Set([currentFrame, ...preloadFrames]);
-
-        for (const frameNumber of this.cache.keys()) {
-            if (!validFrames.has(frameNumber)) {
-                this.cache.delete(frameNumber);
-            }
-        }
-    }
-
+    /**
+     * Preloads initial images to fill the buffer.
+     * @param {number} initialFrame
+     */
     async preloadInitialImages(initialFrame) {
         // Force immediate preload initially
         this.framesSinceLastPreload = this.preloadCooldown;

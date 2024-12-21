@@ -22,7 +22,7 @@ body, html {
     width: 100%; /* Matches the full width of the viewport */
     height: 100%; /* Matches the full height of the viewport */
     background-color: rgba(13, 5, 9, 255); /* Equivalent to your previous canvas background */
-    isolation: isolate; /* Prevent blending with other elements */
+     /* Prevent blending with other elements */
     overflow: hidden; /* Ensures no unexpected scrollbars */
     display: flex; /* Ensures internal resizing consistency */
     cursor: none; /* Hides the cursor */
@@ -39,7 +39,6 @@ body, html {
     object-fit: contain; /* Adjust to maintain aspect ratio without cropping */
     transition: none;
     image-rendering: auto; /* Enhances edge sharpness */
-    transform: translateZ(0); /* Forces GPU rendering */
 
 }
 

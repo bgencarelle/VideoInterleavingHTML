@@ -1,7 +1,7 @@
 // js/folderController.js
 
 import { showModeOverlay, setupKeyboardCallbacksFolder } from './utils.js';
-import { PINGPONG_MODE, FPS } from './config.js';
+import { PINGPONG_MODE} from './config.js';
 import { RandomModeCalculator } from './randomModeCalc.js';
 
 export class FolderController {
@@ -155,7 +155,7 @@ export class FolderController {
     }
 
     updateIncrementMode(frameNumber) {
-        if (frameNumber > 0 && frameNumber % 3 === 0) {
+        if (frameNumber > 0 && frameNumber % 1 === 0) {
             this.currentMainFolder = (this.currentMainFolder + 1) % this.mainFolders.length;
             this.currentFloatFolder = (this.currentFloatFolder + 2) % this.floatFolders.length;
             this.notifyListeners({ folderChanged: true });
